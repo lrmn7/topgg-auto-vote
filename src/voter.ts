@@ -281,26 +281,73 @@ export async function voteForBot(
     };
   }
 
-  console.log('  → Clicking Vote button...');
-  try {
-    const clicked = await page.evaluate(() => {
-      const btn = document.querySelector('[data-auto-vote-btn="1"]') as HTMLButtonElement | null;
-      if (btn) {
-        btn.click();
-        return true;
+  let voteApiResponse: any = null;
+  const onResponse = async (res: any) => {
+    try {
+      const u = res.url();
+      if (u.includes('graphql') || u.includes('/api/')) {
+        const text = await res.text().catch(() => '');
+        if (text.includes('voteEntity')) {
+          voteApiResponse = JSON.parse(text);
+          if (config.debug) {
+            console.log('  [dbg] Top.gg GraphQL response:', text.slice(0, 200));
+          }
+        }
       }
-      return false;
-    });
+    } catch {}
+  };
+  page.on('response', onResponse);
 
-    if (!clicked) {
-      await page.click('[data-auto-vote-btn="1"]');
+  const cleanupListener = () => {
+    try {
+      page.off('response', onResponse);
+    } catch {}
+  };
+
+  console.log('  → Scrolling Vote button into view...');
+  await page.evaluate(() => {
+    const btn = document.querySelector('[data-auto-vote-btn="1"]') as HTMLElement | null;
+    if (btn) {
+      btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }).catch(() => {});
+  await sleep(600);
+
+  console.log('  → Clicking Vote button with authentic cursor...');
+  let clicked = false;
+  try {
+    if (typeof (page as any).realClick === 'function') {
+      await (page as any).realClick('[data-auto-vote-btn="1"]');
+      clicked = true;
     }
   } catch (err: any) {
-    console.warn(`  ⚠️ Click error: ${err.message}`);
+    if (config.debug) console.log(`  [dbg] realClick notice: ${err.message}`);
   }
 
+  if (!clicked) {
+    try {
+      const btnHandle = await page.$('[data-auto-vote-btn="1"]');
+      if (btnHandle) {
+        const box = await btnHandle.boundingBox();
+        if (box) {
+          await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+          clicked = true;
+        }
+      }
+    } catch {}
+  }
+
+  await page.evaluate(() => {
+    const btn = document.querySelector('[data-auto-vote-btn="1"]') as HTMLButtonElement | null;
+    if (btn) {
+      btn.click();
+    }
+  }).catch(() => {});
+
   console.log('  → Waiting for vote confirmation from Top.gg...');
-  const verifyDeadline = Date.now() + 15000;
+  const verifyDeadline = Date.now() + 18000;
+  const clickTime = Date.now();
+  let reclicked = false;
   const successMarkers = [
     'thanks for voting',
     'thank you',
@@ -312,11 +359,11 @@ export async function voteForBot(
   ];
 
   while (Date.now() < verifyDeadline) {
-    await sleep(1500);
-    bodyText = await page.evaluate(() => (document.body ? document.body.innerText.toLowerCase() : ''));
+    await sleep(1200);
 
-    if (successMarkers.some((marker) => bodyText.includes(marker))) {
-      console.log(`  ✅ Successfully voted for bot ${botId}`);
+    if (voteApiResponse?.data?.voteEntity?.isAcknowledged === true) {
+      console.log(`  ✅ Successfully voted for bot ${botId} (API confirmed)`);
+      cleanupListener();
       return {
         accountName,
         username,
@@ -328,20 +375,55 @@ export async function voteForBot(
       };
     }
 
+    bodyText = await page.evaluate(() => (document.body ? document.body.innerText.toLowerCase() : ''));
+    if (successMarkers.some((marker) => bodyText.includes(marker))) {
+      console.log(`  ✅ Successfully voted for bot ${botId}`);
+      cleanupListener();
+      return {
+        accountName,
+        username,
+        avatarUrl,
+        botId,
+        status: 'SUCCESS',
+        message: 'Vote recorded successfully!',
+        timestamp,
+      };
+    }
+
+    if (!reclicked && Date.now() - clickTime > 5000) {
+      const isStillVoteBtn = await page.evaluate(() => {
+        const btn = document.querySelector('[data-auto-vote-btn="1"]') as HTMLElement | null;
+        if (!btn) return false;
+        const text = (btn.innerText || btn.textContent || '').trim().toLowerCase();
+        return text === 'vote' || text.startsWith('vote ');
+      });
+
+      if (isStillVoteBtn) {
+        console.log('  🔄 Vote button still active, re-dispatching click...');
+        reclicked = true;
+        try {
+          if (typeof (page as any).realClick === 'function') {
+            await (page as any).realClick('[data-auto-vote-btn="1"]');
+          } else {
+            await page.click('[data-auto-vote-btn="1"]');
+          }
+        } catch {}
+      }
+    }
+
     if (await isCloudflareActive(page)) {
       console.log('  🛡️ Cloudflare verification appeared after vote click, attempting resolution...');
       await resolveCloudflareChallenge(page, 20000);
     }
   }
 
-  console.log('  → Live confirmation delayed, verifying via page refresh...');
-  await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
-  await sleep(4000);
-  await dismissPrivacyOverlay(page);
-
+  console.log('  → Checking final vote status...');
   bodyText = await page.evaluate(() => (document.body ? document.body.innerText.toLowerCase() : ''));
-  if (successMarkers.some((marker) => bodyText.includes(marker))) {
-    console.log(`  ✅ Successfully voted for bot ${botId}`);
+  if (
+    voteApiResponse?.data?.voteEntity?.isAcknowledged === true ||
+    successMarkers.some((marker) => bodyText.includes(marker))
+  ) {
+    cleanupListener();
     return {
       accountName,
       username,
@@ -353,6 +435,20 @@ export async function voteForBot(
     };
   }
 
+  if (bodyText.includes('vote again in') || bodyText.includes('can vote again')) {
+    cleanupListener();
+    return {
+      accountName,
+      username,
+      avatarUrl,
+      botId,
+      status: 'ALREADY_VOTED',
+      message: 'Vote was accepted (cooldown now active)',
+      timestamp,
+    };
+  }
+
+  cleanupListener();
   const uncertainScreenshot = await captureScreenshot(page, `uncertain_${accountName}_${botId}`);
   return {
     accountName,
