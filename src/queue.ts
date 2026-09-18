@@ -136,13 +136,13 @@ export class VoteQueueRunner {
         }
       }
 
-      // Safe anti-ban delay between accounts (random 2-3 minutes)
+      // Safe delay between accounts (random 2-3 minutes)
       if (i < accounts.length - 1) {
         const delaySec = getRandomDelay(
           this.config.minAccountDelaySeconds,
           this.config.maxAccountDelaySeconds
         );
-        console.log(`\n🛡️ Anti-ban delay: Waiting ${delaySec} seconds (~${Math.round(delaySec / 60)} min) before next account...`);
+        console.log(`\n🛡️ Safedelay: Waiting ${delaySec} seconds (~${Math.round(delaySec / 60)} min) before next account...`);
         await sleep(delaySec * 1000);
       }
     }
