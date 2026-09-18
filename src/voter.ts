@@ -217,7 +217,6 @@ export async function voteForBot(
     };
   }
 
-  // 5. Handle ad countdown and locate Vote button
   console.log('  → Waiting for countdown and locating Vote button...');
   const btnDeadline = Date.now() + 45000;
   let buttonFound = false;
@@ -282,7 +281,6 @@ export async function voteForBot(
     };
   }
 
-  // 6. Click the Vote button
   console.log('  → Clicking Vote button...');
   try {
     const clicked = await page.evaluate(() => {
@@ -301,7 +299,6 @@ export async function voteForBot(
     console.warn(`  ⚠️ Click error: ${err.message}`);
   }
 
-  // 7. Dynamic verification (wait up to 15s for live UI update without disruptive page reload)
   console.log('  → Waiting for vote confirmation from Top.gg...');
   const verifyDeadline = Date.now() + 15000;
   const successMarkers = [
@@ -337,7 +334,6 @@ export async function voteForBot(
     }
   }
 
-  // 8. Fallback check after reload ONLY if live UI update did not appear within 15 seconds
   console.log('  → Live confirmation delayed, verifying via page refresh...');
   await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
   await sleep(4000);
