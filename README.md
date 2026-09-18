@@ -85,7 +85,7 @@ Top.gg utilizes Next.js and Auth.js session cookies (`__Secure-authjs.session-to
 
 1. Open your browser (Chrome, Edge, or Brave) and navigate to https://top.gg.
 2. Log in with your Discord account.
-3. Install a browser cookie export extension such as "Get cookies.txt LOCALLY" or "EditThisCookie".
+3. Install [Get cookies.txt LOCALLY](https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc) from Chrome Web Store first. Cookie export stays local to browser according to extension listing, but exported Auth.js session data remains a sensitive login credential.
 4. Export the cookies for the `top.gg` domain in JSON format.
 5. Save the resulting JSON file directly into the `cookies/` directory with any descriptive filename ending in `.json` (for example: `cookies/account1.json`).
 6. Repeat this process for each account you wish to automate.
