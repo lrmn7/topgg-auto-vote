@@ -1,0 +1,407 @@
+import type { PageWithCursor } from 'puppeteer-real-browser';
+import { VoteResult, AppConfig } from './types';
+import { dismissPrivacyOverlay, checkTopGGAuth, captureScreenshot } from './browser';
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Detects whether Cloudflare Managed Challenge or Turnstile is actively blocking the page
+ */
+export async function isCloudflareActive(page: PageWithCursor): Promise<boolean> {
+  try {
+    const pageTitle = (await page.title()).toLowerCase();
+    if (
+      pageTitle.includes('just a moment') ||
+      pageTitle.includes('cloudflare') ||
+      pageTitle.includes('attention required')
+    ) {
+      return true;
+    }
+
+    return await page.evaluate(() => {
+      const text = (document.body?.innerText || '').toLowerCase();
+      if (
+        text.includes('verifying you are human') ||
+        text.includes('verify you are human') ||
+        text.includes('security service to protect against malicious bots') ||
+        text.includes('checking your browser') ||
+        text.includes('please solve the captcha') ||
+        (text.includes('ray id:') && text.includes('cloudflare'))
+      ) {
+        return true;
+      }
+
+      // Check DOM elements for Cloudflare Turnstile / Managed Challenge
+      const hasCfElements = Boolean(
+        document.querySelector('#challenge-stage') ||
+        document.querySelector('#challenge-running') ||
+        document.querySelector('#challenge-form') ||
+        document.querySelector('#cf-wrapper') ||
+        document.querySelector('iframe[src*="challenges.cloudflare.com"]') ||
+        document.querySelector('iframe[src*="turnstile"]') ||
+        document.querySelector('#turnstile-wrapper')
+      );
+
+      return hasCfElements;
+    });
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Proactively bypasses / solves Cloudflare Turnstile challenges
+ */
+export async function resolveCloudflareChallenge(
+  page: PageWithCursor,
+  maxTimeoutMs: number = 60000
+): Promise<boolean> {
+  const startTime = Date.now();
+  let challengeDetected = false;
+
+  while (Date.now() - startTime < maxTimeoutMs) {
+    const active = await isCloudflareActive(page);
+    if (!active) {
+      if (challengeDetected) {
+        console.log('  ✅ Cloudflare challenge successfully passed!');
+      }
+      return true;
+    }
+
+    if (!challengeDetected) {
+      console.log('  🛡️ Cloudflare verification detected, attempting automated bypass...');
+      challengeDetected = true;
+    }
+
+    // Try finding and clicking Turnstile checkbox if present inside iframes
+    try {
+      // 1. Search across all child frames
+      for (const frame of page.frames()) {
+        const frameUrl = frame.url();
+        if (frameUrl.includes('challenges.cloudflare.com') || frameUrl.includes('turnstile')) {
+          await frame.evaluate(() => {
+            const checkbox = document.querySelector('input[type="checkbox"]') as HTMLElement | null;
+            if (checkbox) {
+              checkbox.click();
+              return true;
+            }
+            const target = document.querySelector('#challenge-stage, .ctp-checkbox-label, #content, body') as HTMLElement | null;
+            if (target) {
+              target.click();
+              return true;
+            }
+            return false;
+          }).catch(() => {});
+        }
+      }
+
+      // 2. Also try clicking the Turnstile iframe bounding box directly
+      const iframes = await page.$$('iframe[src*="challenges.cloudflare.com"], iframe[src*="turnstile"]');
+      for (const iframe of iframes) {
+        const box = await iframe.boundingBox();
+        if (box && box.width > 20 && box.height > 20) {
+          const clickX = box.x + Math.min(30, box.width / 4);
+          const clickY = box.y + box.height / 2;
+          await page.mouse.click(clickX, clickY).catch(() => {});
+        }
+      }
+    } catch {
+      // Ignore cross-origin frame interaction warnings
+    }
+
+    const elapsed = Math.round((Date.now() - startTime) / 1000);
+    console.log(`  ⏳ Waiting for Cloudflare verification to resolve... (${elapsed}s)`);
+    await sleep(3000);
+  }
+
+  // Final check after deadline
+  const stillActive = await isCloudflareActive(page);
+  return !stillActive;
+}
+
+export async function voteForBot(
+  page: PageWithCursor,
+  botId: string,
+  accountName: string,
+  config: AppConfig,
+  username?: string,
+  avatarUrl?: string
+): Promise<VoteResult> {
+  const timestamp = new Date().toISOString();
+  const url = `https://top.gg/bot/${botId}/vote`;
+
+  console.log(`  → Navigating to ${url}...`);
+  try {
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: config.browserTimeoutSeconds * 1000 });
+  } catch (err: any) {
+    console.warn(`  ⚠️ Navigation warning: ${err.message}`);
+  }
+
+  // Allow initial scripts to load
+  await sleep(3000);
+
+  // Handle Cloudflare Turnstile / Managed Challenge verification
+  const cfResolved = await resolveCloudflareChallenge(page, 60000);
+  if (!cfResolved) {
+    const screenshot = await captureScreenshot(page, `cf_blocked_${accountName}_${botId}`);
+    return {
+      accountName,
+      username,
+      avatarUrl,
+      botId,
+      status: 'FAILED',
+      message: 'Cloudflare human verification (Turnstile) did not resolve in time',
+      timestamp,
+      screenshotPath: screenshot,
+    };
+  }
+
+  // Dismiss privacy / GDPR consent modal after page has loaded
+  await dismissPrivacyOverlay(page);
+  await sleep(1500);
+
+  let bodyText = await page.evaluate(() => (document.body ? document.body.innerText.toLowerCase() : ''));
+
+  // 1. Check if login is required
+  if (bodyText.includes('must be logged in') || bodyText.includes('login to vote')) {
+    if (config.debug) console.log('  [dbg] Session not visible yet, refreshing page...');
+    await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
+    await sleep(3000);
+    for (let i = 0; i < 3; i++) {
+      await dismissPrivacyOverlay(page);
+      await sleep(500);
+    }
+    bodyText = await page.evaluate(() => (document.body ? document.body.innerText.toLowerCase() : ''));
+  }
+
+  // 2. Check 404 / Bot Not Found
+  const pageTitle = await page.title();
+  if (bodyText.includes('could not be found') || pageTitle.includes('404')) {
+    const screenshot = await captureScreenshot(page, `404_${accountName}_${botId}`);
+    return {
+      accountName,
+      username,
+      avatarUrl,
+      botId,
+      status: 'FAILED',
+      message: `Bot ID ${botId} not found (404)`,
+      timestamp,
+      screenshotPath: screenshot,
+    };
+  }
+
+  // 3. Check Auth failure
+  const isAuth = await checkTopGGAuth(page);
+  if (!isAuth && (bodyText.includes('must be logged in') || bodyText.includes('login to vote'))) {
+    const screenshot = await captureScreenshot(page, `auth_failed_${accountName}_${botId}`);
+    return {
+      accountName,
+      username,
+      avatarUrl,
+      botId,
+      status: 'FAILED',
+      message: 'Top.gg cookies expired or invalid (Authentication failed)',
+      timestamp,
+      screenshotPath: screenshot,
+    };
+  }
+
+  // 4. Check if already voted (cooldown on Top.gg)
+  const cooldownMarkers = [
+    'vote again in',
+    'already voted',
+    'come back',
+    'cooldown',
+    'thanks for voting',
+    'can vote again',
+    'every 12 hours',
+    'once every 12 hours',
+  ];
+  if (cooldownMarkers.some((marker) => bodyText.includes(marker))) {
+    console.log(`  ⏳ Already voted for bot ${botId} (cooldown active)`);
+    return {
+      accountName,
+      username,
+      avatarUrl,
+      botId,
+      status: 'ALREADY_VOTED',
+      message: 'Already voted on Top.gg, 12h cooldown active',
+      timestamp,
+    };
+  }
+
+  // 5. Handle Video Ads
+  const adTimeout = 45000;
+  const adStart = Date.now();
+  while (Date.now() - adStart < adTimeout) {
+    bodyText = await page.evaluate(() => (document.body ? document.body.innerText.toLowerCase() : ''));
+    if (!bodyText.includes('you will be able to vote after this ad')) {
+      break;
+    }
+    console.log('  → Ad playing, waiting for completion...');
+    await sleep(3000);
+  }
+
+  // 6. Locate Vote Button
+  console.log('  → Looking for Vote button...');
+  const btnDeadline = Date.now() + 30000;
+  let buttonFound = false;
+
+  while (Date.now() < btnDeadline) {
+    await dismissPrivacyOverlay(page);
+
+    const btnState = await page.evaluate(() => {
+      const buttons = Array.from(
+        document.querySelectorAll('button, a[role="button"], [role="button"]')
+      ) as HTMLElement[];
+
+      const btn = buttons.find((b) => {
+        const text = (b.innerText || b.textContent || '').trim().toLowerCase();
+        return text === 'vote' || text.startsWith('vote ');
+      });
+
+      if (!btn) return { exists: false, disabled: true };
+
+      btn.setAttribute('data-auto-vote-btn', '1');
+      const isDisabled =
+        (btn as HTMLButtonElement).disabled ||
+        btn.getAttribute('aria-disabled') === 'true' ||
+        btn.classList.contains('disabled');
+
+      return {
+        exists: true,
+        disabled: Boolean(isDisabled),
+      };
+    });
+
+    if (btnState.exists && !btnState.disabled) {
+      buttonFound = true;
+      break;
+    }
+
+    await sleep(2000);
+  }
+
+  if (!buttonFound) {
+    const screenshot = await captureScreenshot(page, `no_btn_${accountName}_${botId}`);
+    return {
+      accountName,
+      username,
+      avatarUrl,
+      botId,
+      status: 'FAILED',
+      message: 'Vote button not found or remained disabled',
+      timestamp,
+      screenshotPath: screenshot,
+    };
+  }
+
+  // 7. Click the Vote button
+  console.log('  → Clicking Vote button...');
+  try {
+    const clicked = await page.evaluate(() => {
+      const btn = document.querySelector('[data-auto-vote-btn="1"]') as HTMLButtonElement | null;
+      if (btn) {
+        btn.click();
+        return true;
+      }
+      return false;
+    });
+
+    if (!clicked) {
+      // Fallback click via selector
+      await page.click('[data-auto-vote-btn="1"]');
+    }
+  } catch (err: any) {
+    console.warn(`  ⚠️ Click error: ${err.message}`);
+  }
+
+  // 8. Wait and verify success
+  await sleep(5000);
+  bodyText = await page.evaluate(() => (document.body ? document.body.innerText.toLowerCase() : ''));
+
+  if (bodyText.includes('thanks for voting') || bodyText.includes('thank you')) {
+    console.log(`  ✅ Successfully voted for bot ${botId}`);
+    return {
+      accountName,
+      username,
+      avatarUrl,
+      botId,
+      status: 'SUCCESS',
+      message: 'Vote recorded successfully!',
+      timestamp,
+    };
+  }
+
+  // Settle and reload verification
+  console.log('  → Verifying vote submission...');
+  await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
+  await sleep(3000);
+  await dismissPrivacyOverlay(page);
+
+  bodyText = await page.evaluate(() => (document.body ? document.body.innerText.toLowerCase() : ''));
+  const successMarkers = [
+    'thanks for voting',
+    'thank you',
+    'already voted',
+    'vote again in',
+    'can vote again',
+  ];
+
+  if (successMarkers.some((marker) => bodyText.includes(marker))) {
+    console.log(`  ✅ Successfully voted for bot ${botId}`);
+    return {
+      accountName,
+      username,
+      avatarUrl,
+      botId,
+      status: 'SUCCESS',
+      message: 'Vote recorded and verified successfully!',
+      timestamp,
+    };
+  }
+
+  // Check if CAPTCHA / Cloudflare was triggered on vote click
+  if (await isCloudflareActive(page)) {
+    console.log('  🛡️ Cloudflare verification appeared after vote click, attempting resolution...');
+    const solved = await resolveCloudflareChallenge(page, 30000);
+    if (solved) {
+      await sleep(3000);
+      bodyText = await page.evaluate(() => (document.body ? document.body.innerText.toLowerCase() : ''));
+      if (successMarkers.some((marker) => bodyText.includes(marker))) {
+        return {
+          accountName,
+          username,
+          avatarUrl,
+          botId,
+          status: 'SUCCESS',
+          message: 'Vote recorded and verified successfully!',
+          timestamp,
+        };
+      }
+    }
+    const screenshot = await captureScreenshot(page, `captcha_${accountName}_${botId}`);
+    return {
+      accountName,
+      username,
+      avatarUrl,
+      botId,
+      status: 'FAILED',
+      message: 'Cloudflare CAPTCHA required manual action',
+      timestamp,
+      screenshotPath: screenshot,
+    };
+  }
+
+  const uncertainScreenshot = await captureScreenshot(page, `uncertain_${accountName}_${botId}`);
+  return {
+    accountName,
+    username,
+    avatarUrl,
+    botId,
+    status: 'FAILED',
+    message: 'Vote status could not be verified after submission',
+    timestamp,
+    screenshotPath: uncertainScreenshot,
+  };
+}

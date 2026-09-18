@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  topgg-voter:
+    build: .
+    container_name: topgg-voter
+    restart: unless-stopped
+    environment:
+      - BOT_IDS=${BOT_IDS:-928711702596423740}
+      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL}
+      - SEND_ERROR_SCREENSHOTS=${SEND_ERROR_SCREENSHOTS:-1}
+      - DEBUG=${DEBUG:-0}
+      - HEADLESS=true
+      - ACCOUNT_DELAY_MIN=${ACCOUNT_DELAY_MIN:-120}
+      - ACCOUNT_DELAY_MAX=${ACCOUNT_DELAY_MAX:-180}
+      - BOT_DELAY=${BOT_DELAY:-60}
+    volumes:
+      - ./cookies:/app/cookies
+      - ./data:/app/data
+      - ./screenshots:/app/screenshots

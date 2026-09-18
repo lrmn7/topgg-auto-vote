@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment secrets
+.env
+
+# Screenshots generated on error
+screenshots/*.png
+!screenshots/.gitkeep
+
+# Sensitive cookies (do not commit real account cookies to git)
+cookies/*.json
+!cookies/.gitkeep
+
+# Database files
+data/*.tmp
+data/*.json
+!data/.gitkeep
+
+# Legacy Python virtualenv
+legacy-python/venv/
+legacy-python/__pycache__/
+
+# Archive bundles
+*.zip
+
+*.cache

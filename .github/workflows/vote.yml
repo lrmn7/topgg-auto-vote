@@ -1,0 +1,84 @@
+name: Top.gg Auto-Vote
+
+on:
+  schedule:
+    # Runs every 12 hours (00:00 UTC and 12:00 UTC = 07:00 WIB and 19:00 WIB)
+    - cron: '0 0 * * *'
+    - cron: '0 12 * * *'
+  workflow_dispatch:
+    inputs:
+      debug:
+        description: 'Enable debug logging (1 or 0)'
+        required: false
+        default: '0'
+
+concurrency:
+  group: topgg-vote-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  vote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install System Dependencies (Xvfb)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+
+      - name: Install Project Dependencies
+        run: |
+          npm ci || npm install
+          npm run build
+
+      - name: Auto-Detect Account Cookies from GitHub Secrets
+        env:
+          ALL_SECRETS: ${{ toJson(secrets) }}
+        run: |
+          node -e "
+            const fs = require('fs');
+            if (!fs.existsSync('cookies')) fs.mkdirSync('cookies', { recursive: true });
+            let secrets = {};
+            try { secrets = JSON.parse(process.env.ALL_SECRETS || '{}'); } catch {}
+            let count = 0;
+            for (const [key, val] of Object.entries(secrets)) {
+              if (key.toUpperCase().startsWith('TOPGG_COOKIE') && val && val.trim()) {
+                const name = key.toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+                fs.writeFileSync('cookies/' + name + '.json', val.trim());
+                count++;
+              }
+            }
+            console.log('[Secrets] Auto-detected and loaded ' + count + ' cookie account secret(s).');
+          "
+
+      - name: Execute Top.gg Vote
+        env:
+          BOT_IDS: ${{ secrets.BOT_IDS }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DEBUG: ${{ github.event.inputs.debug || secrets.DEBUG || '0' }}
+          SEND_ERROR_SCREENSHOTS: '1'
+          HEADLESS: 'true'
+          ACCOUNT_DELAY_MIN: '120'
+          ACCOUNT_DELAY_MAX: '180'
+          BOT_DELAY: '60'
+        run: |
+          xvfb-run --auto-servernum --server-args="-screen 0 1280x800x24" npm run start:once
+
+      - name: Upload Error Screenshots (If Failed)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: error-screenshots
+          path: screenshots/*.png
+          retention-days: 7
