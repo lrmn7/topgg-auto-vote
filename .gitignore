@@ -20,11 +20,7 @@ data/*.tmp
 data/*.json
 !data/.gitkeep
 
-# Legacy Python virtualenv
-legacy-python/venv/
-legacy-python/__pycache__/
-
 # Archive bundles
 *.zip
-
+scratch
 *.cache
