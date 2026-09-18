@@ -123,7 +123,6 @@ function parseCookiesFromEnvValue(envVal: string, defaultName: string): AccountC
 
   const results: AccountCookieData[] = [];
 
-  // Case 1: Array of arrays -> multiple accounts: [ [ {...}, {...} ], [ {...} ] ]
   if (Array.isArray(parsed) && parsed.length > 0 && Array.isArray(parsed[0])) {
     parsed.forEach((subArray, idx) => {
       const cookies = parseRawCookies(subArray);
@@ -143,7 +142,6 @@ function parseCookiesFromEnvValue(envVal: string, defaultName: string): AccountC
     return results;
   }
 
-  // Case 2: Object where keys are account names: { "akun1": [...], "akun2": [...] }
   if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && !parsed.cookies && !parsed.name) {
     for (const [key, val] of Object.entries(parsed)) {
       if (Array.isArray(val)) {
@@ -165,7 +163,6 @@ function parseCookiesFromEnvValue(envVal: string, defaultName: string): AccountC
     if (results.length > 0) return results;
   }
 
-  // Case 3: Standard single account: [ { name: "...", value: "..." }, ... ]
   const cookies = parseRawCookies(parsed);
   if (cookies.length > 0) {
     const { username, avatarUrl } = extractUserDataFromCookies(cookies);
@@ -206,16 +203,13 @@ export function loadAllAccountCookies(cookiesDirPath?: string): AccountCookieDat
     }
   }
 
-  // Fallback: Check environment variable TOPGG_COOKIES or COOKIES (useful for GitHub Actions secrets)
   if (accounts.length === 0) {
-    // 1. Check primary env var
     const primaryEnv = process.env.TOPGG_COOKIES || process.env.COOKIES;
     if (primaryEnv) {
       const parsedAccounts = parseCookiesFromEnvValue(primaryEnv, 'account-1');
       accounts.push(...parsedAccounts);
     }
 
-    // 2. Check numbered env vars: TOPGG_COOKIES_1, TOPGG_COOKIES_2, etc.
     for (const key of Object.keys(process.env)) {
       if (/^TOPGG_COOKIES_\d+$/i.test(key)) {
         const val = process.env[key];

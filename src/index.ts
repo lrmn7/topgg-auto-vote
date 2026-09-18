@@ -3,10 +3,8 @@ import { VoteDatabase } from './database';
 import { DiscordNotifier } from './notifier';
 import { VoteQueueRunner } from './queue';
 
-// Global error shields to prevent process crashes from harmless subprocess signals in minimal environments
 process.on('uncaughtException', (err: any) => {
   if (err?.code === 'ENOENT' && (err?.syscall === 'spawn ps' || err?.path === 'ps' || err?.message?.includes('spawn ps'))) {
-    // Harmless ENOENT from tree-kill in environments without procps/ps
     return;
   }
   console.error('Fatal crash in main process:', err);
@@ -33,7 +31,6 @@ async function main() {
   console.log(`📢 Discord Webhook: ${config.discordWebhookUrl ? 'Configured ✅' : 'Disabled (No URL)'}`);
   console.log(`🖥️ Browser Mode: ${config.headless ? 'Headless' : 'Visible (GUI)'}`);
 
-  // Graceful shutdown handling
   let isShuttingDown = false;
   const handleExit = () => {
     if (isShuttingDown) return;
@@ -60,7 +57,6 @@ async function main() {
         console.error(`❌ Unexpected error during cycle: ${err.message}`);
       }
 
-      // Check every 15 minutes if any account/bot becomes eligible
       const checkIntervalMinutes = 15;
       console.log(`\n💤 Sleeping for ${checkIntervalMinutes} minutes before next schedule check...`);
       await sleep(checkIntervalMinutes * 60 * 1000);

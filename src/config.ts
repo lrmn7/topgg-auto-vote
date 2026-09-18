@@ -2,7 +2,6 @@ import * as dotenv from 'dotenv';
 import * as path from 'path';
 import { AppConfig } from './types';
 
-// Load .env from project root
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
 function parseBool(val: string | undefined, defaultVal: boolean): boolean {
@@ -22,7 +21,6 @@ export function loadConfig(): AppConfig {
   const isDebugArg = args.includes('--debug') || args.includes('-d');
   const headlessArg = args.find((a) => a.startsWith('--headless='));
 
-  // Bot IDs can be comma-separated in BOT_IDS or single in BOT_ID
   const rawBotIds = process.env.BOT_IDS || process.env.BOT_ID || '928711702596423740';
   const botIds = rawBotIds
     .split(',')

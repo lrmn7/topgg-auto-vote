@@ -123,7 +123,6 @@ export class VoteDatabase {
     }
 
     const now = new Date();
-    // 12 hours from now
     const nextAvailable = new Date(now.getTime() + COOLDOWN_MS);
 
     this.data.accounts[accountName][botId] = {

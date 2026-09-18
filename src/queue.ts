@@ -49,7 +49,6 @@ export class VoteQueueRunner {
       console.log(`👤 [Account ${i + 1}/${accounts.length}]: ${accountDisplayName}`);
       console.log(`────────────────────────────────────────────────────────────`);
 
-      // Determine eligible bots for this account
       const eligibleBots: string[] = [];
       for (const botId of this.config.botIds) {
         const eligibility = this.db.isEligibleToVote(account.accountName, botId);
@@ -59,7 +58,6 @@ export class VoteQueueRunner {
           console.log(
             `  ⏳ Bot ${botId}: Cooldown active (${eligibility.remainingHours}h ${eligibility.remainingMinutes}m remaining). Skipping.`
           );
-          // Send notification to Discord so user is informed of current cooldown status
           await this.notifier.sendCooldownNotice(
             account.accountName,
             account.username,
@@ -100,7 +98,6 @@ export class VoteQueueRunner {
           );
           results.push(voteResult);
 
-          // Update database
           this.db.recordVote(
             account.accountName,
             botId,
@@ -108,10 +105,7 @@ export class VoteQueueRunner {
             voteResult.message
           );
 
-          // Send Discord notification
           await this.notifier.sendVoteResult(voteResult);
-
-          // Delay between bots for the same account (default 60s)
           if (b < eligibleBots.length - 1) {
             console.log(`\n  ⏳ Waiting ${this.config.botDelaySeconds}s before next bot...`);
             await sleep(this.config.botDelaySeconds * 1000);
@@ -136,7 +130,6 @@ export class VoteQueueRunner {
         }
       }
 
-      // Safe delay between accounts (random 2-3 minutes)
       if (i < accounts.length - 1) {
         const delaySec = getRandomDelay(
           this.config.minAccountDelaySeconds,

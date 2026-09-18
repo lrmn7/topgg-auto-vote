@@ -21,12 +21,10 @@ function resolveChromeExecutable(config: AppConfig): string | undefined {
     process.env.PUPPETEER_EXECUTABLE_PATH ||
     process.env.CHROMIUM_PATH;
 
-  // 1. If configured path actually exists on disk, use it!
   if (configuredPath && fs.existsSync(configuredPath)) {
     return configuredPath;
   }
 
-  // 2. Search common Linux / Docker / Pterodactyl container paths
   if (process.platform === 'linux') {
     const candidatePaths = [
       '/usr/bin/chromium-browser',
@@ -52,7 +50,6 @@ function resolveChromeExecutable(config: AppConfig): string | undefined {
     }
   }
 
-  // 3. If explicit path was provided but doesn't exist, log warning and do NOT return it
   if (configuredPath) {
     console.warn(
       `  ⚠️ [Browser] Configured browser path "${configuredPath}" does not exist on disk!`
@@ -93,13 +90,11 @@ function ensurePsBinaryShim(): void {
  * or automatically downloads Chrome if no installation is found on the system.
  */
 async function ensureChromeAvailable(config: AppConfig): Promise<string | undefined> {
-  // 1. Check existing paths (configured or system)
   const existing = resolveChromeExecutable(config);
   if (existing) {
     return existing;
   }
 
-  // 2. Check if a previously auto-downloaded browser exists in .cache/browsers
   const cacheDir = path.resolve(process.cwd(), '.cache', 'browsers');
   try {
     const { getInstalledBrowsers, Browser } = await import('@puppeteer/browsers');
@@ -111,7 +106,6 @@ async function ensureChromeAvailable(config: AppConfig): Promise<string | undefi
     }
   } catch {}
 
-  // 3. Auto-download Chrome for this environment (one-time setup)
   console.log('\n  ⬇️ [Browser] No Chrome installation found on system.');
   console.log('  ⬇️ [Browser] Automatically downloading Chrome for this environment (one-time setup)...');
   try {
@@ -161,7 +155,6 @@ export async function createBrowserSession(config: AppConfig): Promise<BrowserSe
     `--user-agent=${userAgent}`,
   ];
 
-  // Resolve or auto-download Chrome executable binary path
   const chromeExecutable = await ensureChromeAvailable(config);
   if (chromeExecutable) {
     process.env.CHROME_PATH = chromeExecutable;
@@ -176,7 +169,6 @@ export async function createBrowserSession(config: AppConfig): Promise<BrowserSe
     );
   }
 
-  // On Linux containers running headless, disableXvfb avoids missing Xvfb startup errors
   const disableXvfb =
     process.env.DISABLE_XVFB === '1' ||
     process.env.DISABLE_XVFB === 'true' ||
@@ -217,7 +209,6 @@ export async function injectCookies(page: PageWithCursor, cookies: TopGGCookie[]
     };
 
     if (c.name.startsWith('__Host-')) {
-      // RFC 6265: __Host- cookies MUST NOT have a domain attribute
       item.url = 'https://top.gg';
     } else {
       item.domain = c.domain?.startsWith('.') ? c.domain : `.${c.domain || 'top.gg'}`;
@@ -233,7 +224,6 @@ export async function injectCookies(page: PageWithCursor, cookies: TopGGCookie[]
     try {
       await page.setCookie(item);
     } catch (err: any) {
-      // Ignore individual non-essential cookie injection errors
       console.warn(`  ⚠️ Cookie warning (${c.name}): ${err.message}`);
     }
   }
@@ -293,7 +283,6 @@ export async function dismissPrivacyOverlay(page: PageWithCursor): Promise<boole
 export async function checkTopGGAuth(page: PageWithCursor): Promise<boolean> {
   try {
     const authResult = await page.evaluate(async () => {
-      // 1. Check Auth.js session API
       try {
         const res = await fetch('/api/auth/session', { credentials: 'include' });
         if (res.ok) {
@@ -301,8 +290,6 @@ export async function checkTopGGAuth(page: PageWithCursor): Promise<boolean> {
           if (session && session.user) return true;
         }
       } catch {}
-
-      // 2. Check DOM markers
       try {
         const body = document.body ? document.body.innerText.toLowerCase() : '';
         if (body && !body.includes('verify you are human') && !body.includes('just a moment')) {

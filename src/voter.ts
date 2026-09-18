@@ -31,7 +31,6 @@ export async function isCloudflareActive(page: PageWithCursor): Promise<boolean>
         return true;
       }
 
-      // Check DOM elements for Cloudflare Turnstile / Managed Challenge
       const hasCfElements = Boolean(
         document.querySelector('#challenge-stage') ||
         document.querySelector('#challenge-running') ||
@@ -73,9 +72,7 @@ export async function resolveCloudflareChallenge(
       challengeDetected = true;
     }
 
-    // Try finding and clicking Turnstile checkbox if present inside iframes
     try {
-      // 1. Search across all child frames
       for (const frame of page.frames()) {
         const frameUrl = frame.url();
         if (frameUrl.includes('challenges.cloudflare.com') || frameUrl.includes('turnstile')) {
@@ -95,7 +92,6 @@ export async function resolveCloudflareChallenge(
         }
       }
 
-      // 2. Also try clicking the Turnstile iframe bounding box directly
       const iframes = await page.$$('iframe[src*="challenges.cloudflare.com"], iframe[src*="turnstile"]');
       for (const iframe of iframes) {
         const box = await iframe.boundingBox();
@@ -114,7 +110,6 @@ export async function resolveCloudflareChallenge(
     await sleep(3000);
   }
 
-  // Final check after deadline
   const stillActive = await isCloudflareActive(page);
   return !stillActive;
 }
@@ -137,10 +132,8 @@ export async function voteForBot(
     console.warn(`  ⚠️ Navigation warning: ${err.message}`);
   }
 
-  // Allow initial scripts to load
   await sleep(3000);
 
-  // Handle Cloudflare Turnstile / Managed Challenge verification
   const cfResolved = await resolveCloudflareChallenge(page, 60000);
   if (!cfResolved) {
     const screenshot = await captureScreenshot(page, `cf_blocked_${accountName}_${botId}`);
@@ -156,13 +149,10 @@ export async function voteForBot(
     };
   }
 
-  // Dismiss privacy / GDPR consent modal after page has loaded
   await dismissPrivacyOverlay(page);
   await sleep(1500);
 
   let bodyText = await page.evaluate(() => (document.body ? document.body.innerText.toLowerCase() : ''));
-
-  // 1. Check if login is required
   if (bodyText.includes('must be logged in') || bodyText.includes('login to vote')) {
     if (config.debug) console.log('  [dbg] Session not visible yet, refreshing page...');
     await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
@@ -174,7 +164,6 @@ export async function voteForBot(
     bodyText = await page.evaluate(() => (document.body ? document.body.innerText.toLowerCase() : ''));
   }
 
-  // 2. Check 404 / Bot Not Found
   const pageTitle = await page.title();
   if (bodyText.includes('could not be found') || pageTitle.includes('404')) {
     const screenshot = await captureScreenshot(page, `404_${accountName}_${botId}`);
@@ -190,7 +179,6 @@ export async function voteForBot(
     };
   }
 
-  // 3. Check Auth failure
   const isAuth = await checkTopGGAuth(page);
   if (!isAuth && (bodyText.includes('must be logged in') || bodyText.includes('login to vote'))) {
     const screenshot = await captureScreenshot(page, `auth_failed_${accountName}_${botId}`);
@@ -206,7 +194,6 @@ export async function voteForBot(
     };
   }
 
-  // 4. Check if already voted (cooldown on Top.gg)
   const cooldownMarkers = [
     'vote again in',
     'already voted',
@@ -230,7 +217,6 @@ export async function voteForBot(
     };
   }
 
-  // 5. Handle Video Ads
   const adTimeout = 45000;
   const adStart = Date.now();
   while (Date.now() - adStart < adTimeout) {
@@ -242,7 +228,6 @@ export async function voteForBot(
     await sleep(3000);
   }
 
-  // 6. Locate Vote Button
   console.log('  → Looking for Vote button...');
   const btnDeadline = Date.now() + 30000;
   let buttonFound = false;
@@ -296,7 +281,6 @@ export async function voteForBot(
     };
   }
 
-  // 7. Click the Vote button
   console.log('  → Clicking Vote button...');
   try {
     const clicked = await page.evaluate(() => {
@@ -309,14 +293,11 @@ export async function voteForBot(
     });
 
     if (!clicked) {
-      // Fallback click via selector
       await page.click('[data-auto-vote-btn="1"]');
     }
   } catch (err: any) {
     console.warn(`  ⚠️ Click error: ${err.message}`);
   }
-
-  // 8. Wait and verify success
   await sleep(5000);
   bodyText = await page.evaluate(() => (document.body ? document.body.innerText.toLowerCase() : ''));
 
@@ -332,8 +313,6 @@ export async function voteForBot(
       timestamp,
     };
   }
-
-  // Settle and reload verification
   console.log('  → Verifying vote submission...');
   await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
   await sleep(3000);
@@ -361,7 +340,6 @@ export async function voteForBot(
     };
   }
 
-  // Check if CAPTCHA / Cloudflare was triggered on vote click
   if (await isCloudflareActive(page)) {
     console.log('  🛡️ Cloudflare verification appeared after vote click, attempting resolution...');
     const solved = await resolveCloudflareChallenge(page, 30000);
