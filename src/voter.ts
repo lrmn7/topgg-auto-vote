@@ -217,19 +217,9 @@ export async function voteForBot(
     };
   }
 
-  const adTimeout = 45000;
-  const adStart = Date.now();
-  while (Date.now() - adStart < adTimeout) {
-    bodyText = await page.evaluate(() => (document.body ? document.body.innerText.toLowerCase() : ''));
-    if (!bodyText.includes('you will be able to vote after this ad')) {
-      break;
-    }
-    console.log('  → Ad playing, waiting for completion...');
-    await sleep(3000);
-  }
-
-  console.log('  → Looking for Vote button...');
-  const btnDeadline = Date.now() + 30000;
+  // 5. Handle ad countdown and locate Vote button
+  console.log('  → Waiting for countdown and locating Vote button...');
+  const btnDeadline = Date.now() + 45000;
   let buttonFound = false;
 
   while (Date.now() < btnDeadline) {
@@ -245,7 +235,14 @@ export async function voteForBot(
         return text === 'vote' || text.startsWith('vote ');
       });
 
-      if (!btn) return { exists: false, disabled: true };
+      if (!btn) {
+        const countdownBtn = buttons.find((b) => /^[0-9]+$/.test((b.innerText || b.textContent || '').trim()));
+        return {
+          exists: false,
+          disabled: true,
+          countdown: countdownBtn ? (countdownBtn.innerText || countdownBtn.textContent || '').trim() : undefined,
+        };
+      }
 
       btn.setAttribute('data-auto-vote-btn', '1');
       const isDisabled =
@@ -262,6 +259,10 @@ export async function voteForBot(
     if (btnState.exists && !btnState.disabled) {
       buttonFound = true;
       break;
+    }
+
+    if (btnState.countdown) {
+      console.log(`  ⏳ Ad countdown in progress: ${btnState.countdown}s remaining...`);
     }
 
     await sleep(2000);
@@ -281,6 +282,7 @@ export async function voteForBot(
     };
   }
 
+  // 6. Click the Vote button
   console.log('  → Clicking Vote button...');
   try {
     const clicked = await page.evaluate(() => {
@@ -298,35 +300,50 @@ export async function voteForBot(
   } catch (err: any) {
     console.warn(`  ⚠️ Click error: ${err.message}`);
   }
-  await sleep(5000);
-  bodyText = await page.evaluate(() => (document.body ? document.body.innerText.toLowerCase() : ''));
 
-  if (bodyText.includes('thanks for voting') || bodyText.includes('thank you')) {
-    console.log(`  ✅ Successfully voted for bot ${botId}`);
-    return {
-      accountName,
-      username,
-      avatarUrl,
-      botId,
-      status: 'SUCCESS',
-      message: 'Vote recorded successfully!',
-      timestamp,
-    };
-  }
-  console.log('  → Verifying vote submission...');
-  await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
-  await sleep(3000);
-  await dismissPrivacyOverlay(page);
-
-  bodyText = await page.evaluate(() => (document.body ? document.body.innerText.toLowerCase() : ''));
+  // 7. Dynamic verification (wait up to 15s for live UI update without disruptive page reload)
+  console.log('  → Waiting for vote confirmation from Top.gg...');
+  const verifyDeadline = Date.now() + 15000;
   const successMarkers = [
     'thanks for voting',
     'thank you',
     'already voted',
     'vote again in',
     'can vote again',
+    'every 12 hours',
+    'set a reminder so we can let you know',
   ];
 
+  while (Date.now() < verifyDeadline) {
+    await sleep(1500);
+    bodyText = await page.evaluate(() => (document.body ? document.body.innerText.toLowerCase() : ''));
+
+    if (successMarkers.some((marker) => bodyText.includes(marker))) {
+      console.log(`  ✅ Successfully voted for bot ${botId}`);
+      return {
+        accountName,
+        username,
+        avatarUrl,
+        botId,
+        status: 'SUCCESS',
+        message: 'Vote recorded successfully!',
+        timestamp,
+      };
+    }
+
+    if (await isCloudflareActive(page)) {
+      console.log('  🛡️ Cloudflare verification appeared after vote click, attempting resolution...');
+      await resolveCloudflareChallenge(page, 20000);
+    }
+  }
+
+  // 8. Fallback check after reload ONLY if live UI update did not appear within 15 seconds
+  console.log('  → Live confirmation delayed, verifying via page refresh...');
+  await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
+  await sleep(4000);
+  await dismissPrivacyOverlay(page);
+
+  bodyText = await page.evaluate(() => (document.body ? document.body.innerText.toLowerCase() : ''));
   if (successMarkers.some((marker) => bodyText.includes(marker))) {
     console.log(`  ✅ Successfully voted for bot ${botId}`);
     return {
@@ -337,37 +354,6 @@ export async function voteForBot(
       status: 'SUCCESS',
       message: 'Vote recorded and verified successfully!',
       timestamp,
-    };
-  }
-
-  if (await isCloudflareActive(page)) {
-    console.log('  🛡️ Cloudflare verification appeared after vote click, attempting resolution...');
-    const solved = await resolveCloudflareChallenge(page, 30000);
-    if (solved) {
-      await sleep(3000);
-      bodyText = await page.evaluate(() => (document.body ? document.body.innerText.toLowerCase() : ''));
-      if (successMarkers.some((marker) => bodyText.includes(marker))) {
-        return {
-          accountName,
-          username,
-          avatarUrl,
-          botId,
-          status: 'SUCCESS',
-          message: 'Vote recorded and verified successfully!',
-          timestamp,
-        };
-      }
-    }
-    const screenshot = await captureScreenshot(page, `captcha_${accountName}_${botId}`);
-    return {
-      accountName,
-      username,
-      avatarUrl,
-      botId,
-      status: 'FAILED',
-      message: 'Cloudflare CAPTCHA required manual action',
-      timestamp,
-      screenshotPath: screenshot,
     };
   }
 
