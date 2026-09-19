@@ -188,7 +188,10 @@ export function loadAllAccountCookies(cookiesDirPath?: string): AccountCookieDat
   const accounts: AccountCookieData[] = [];
 
   if (fs.existsSync(dir)) {
-    const files = fs.readdirSync(dir).filter((f) => f.endsWith('.json'));
+    const files = fs
+      .readdirSync(dir)
+      .filter((f) => f.endsWith('.json'))
+      .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
 
     for (const file of files) {
       const fullPath = path.join(dir, file);
