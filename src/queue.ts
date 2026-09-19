@@ -88,7 +88,7 @@ export class VoteQueueRunner {
           const botId = eligibleBots[b];
           console.log(`\n  [Bot ${b + 1}/${eligibleBots.length}] Voting for bot ID: ${botId}...`);
 
-          const voteResult = await voteForBot(
+          let voteResult = await voteForBot(
             session.page,
             botId,
             account.accountName,
@@ -96,6 +96,32 @@ export class VoteQueueRunner {
             account.username,
             account.avatarUrl
           );
+
+          if (voteResult.status === 'FAILED') {
+            console.log(`\n  ⚠️ Vote failed for bot ${botId} (${voteResult.message}). Initiating retry (1/1) in 10s...`);
+            await sleep(10000);
+
+            try {
+              const retryResult = await voteForBot(
+                session.page,
+                botId,
+                account.accountName,
+                this.config,
+                account.username,
+                account.avatarUrl
+              );
+              if (retryResult.status === 'SUCCESS' || retryResult.status === 'ALREADY_VOTED') {
+                console.log(`  🎉 Retry succeeded for bot ${botId} (Status: ${retryResult.status})!`);
+                voteResult = retryResult;
+              } else {
+                console.log(`  ⚠️ Retry attempt ended with status ${retryResult.status}: ${retryResult.message}`);
+                voteResult = retryResult;
+              }
+            } catch (retryErr: any) {
+              console.error(`  ❌ Retry encountered error: ${retryErr.message}`);
+            }
+          }
+
           results.push(voteResult);
 
           this.db.recordVote(

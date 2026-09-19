@@ -114,6 +114,56 @@ export async function resolveCloudflareChallenge(
   return !stillActive;
 }
 
+export interface VoteButtonInfo {
+  handle: any;
+  text: string;
+  box: { x: number; y: number; width: number; height: number };
+}
+
+/**
+ * Dynamically finds the active, enabled Vote button on the page.
+ * Evaluates fresh elements on each call so it never breaks on React re-renders.
+ */
+export async function findVoteButton(page: PageWithCursor): Promise<VoteButtonInfo | null> {
+  try {
+    const candidateHandles = await page.$$('button, a[role="button"], [role="button"]');
+    for (const el of candidateHandles) {
+      try {
+        const info: { text: string; disabled: boolean } | null = await page.evaluate((b: any) => {
+          const el = b as HTMLElement;
+          const text = (el.innerText || el.textContent || el.getAttribute('aria-label') || '').trim();
+          const lower = text.toLowerCase();
+
+          const isVote =
+            (lower === 'vote' || lower.startsWith('vote ') || lower.startsWith('vote(')) &&
+            !lower.includes('already') &&
+            !lower.includes('voted');
+
+          if (!isVote) return null;
+
+          const isDisabled =
+            (el as HTMLButtonElement).disabled ||
+            el.getAttribute('aria-disabled') === 'true' ||
+            el.classList.contains('disabled') ||
+            el.hasAttribute('disabled');
+
+          return { text, disabled: Boolean(isDisabled) };
+        }, el);
+
+        if (info && !info.disabled) {
+          const box = await el.boundingBox();
+          if (box && box.width > 10 && box.height > 10) {
+            return { handle: el, text: info.text, box };
+          }
+        }
+      } catch {
+        // Element may have detached/re-rendered; skip to next candidate
+      }
+    }
+  } catch {}
+  return null;
+}
+
 export async function voteForBot(
   page: PageWithCursor,
   botId: string,
@@ -217,70 +267,6 @@ export async function voteForBot(
     };
   }
 
-  console.log('  → Waiting for countdown and locating Vote button...');
-  const btnDeadline = Date.now() + 45000;
-  let buttonFound = false;
-
-  while (Date.now() < btnDeadline) {
-    await dismissPrivacyOverlay(page);
-
-    const btnState = await page.evaluate(() => {
-      const buttons = Array.from(
-        document.querySelectorAll('button, a[role="button"], [role="button"]')
-      ) as HTMLElement[];
-
-      const btn = buttons.find((b) => {
-        const text = (b.innerText || b.textContent || '').trim().toLowerCase();
-        return text === 'vote' || text.startsWith('vote ');
-      });
-
-      if (!btn) {
-        const countdownBtn = buttons.find((b) => /^[0-9]+$/.test((b.innerText || b.textContent || '').trim()));
-        return {
-          exists: false,
-          disabled: true,
-          countdown: countdownBtn ? (countdownBtn.innerText || countdownBtn.textContent || '').trim() : undefined,
-        };
-      }
-
-      btn.setAttribute('data-auto-vote-btn', '1');
-      const isDisabled =
-        (btn as HTMLButtonElement).disabled ||
-        btn.getAttribute('aria-disabled') === 'true' ||
-        btn.classList.contains('disabled');
-
-      return {
-        exists: true,
-        disabled: Boolean(isDisabled),
-      };
-    });
-
-    if (btnState.exists && !btnState.disabled) {
-      buttonFound = true;
-      break;
-    }
-
-    if (btnState.countdown) {
-      console.log(`  ⏳ Ad countdown in progress: ${btnState.countdown}s remaining...`);
-    }
-
-    await sleep(2000);
-  }
-
-  if (!buttonFound) {
-    const screenshot = await captureScreenshot(page, `no_btn_${accountName}_${botId}`);
-    return {
-      accountName,
-      username,
-      avatarUrl,
-      botId,
-      status: 'FAILED',
-      message: 'Vote button not found or remained disabled',
-      timestamp,
-      screenshotPath: screenshot,
-    };
-  }
-
   let voteApiResponse: any = null;
   const onResponse = async (res: any) => {
     try {
@@ -304,48 +290,171 @@ export async function voteForBot(
     } catch {}
   };
 
-  console.log('  → Scrolling Vote button into view...');
-  await page.evaluate(() => {
-    const btn = document.querySelector('[data-auto-vote-btn="1"]') as HTMLElement | null;
-    if (btn) {
-      btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  console.log('  → Waiting for countdown and locating Vote button...');
+  const btnDeadline = Date.now() + 45000;
+  let buttonFound = false;
+
+  while (Date.now() < btnDeadline) {
+    await dismissPrivacyOverlay(page);
+
+    const readyBtn = await findVoteButton(page);
+    if (readyBtn) {
+      console.log(`  🎯 Active Vote button found: "${readyBtn.text}"`);
+      buttonFound = true;
+      break;
     }
-  }).catch(() => {});
-  await sleep(600);
+
+    const countdownInfo = await page.evaluate(() => {
+      const buttons = Array.from(
+        document.querySelectorAll('button, a[role="button"], [role="button"]')
+      ) as HTMLElement[];
+
+      let countdown: string | undefined;
+      let hasDisabledVote = false;
+
+      for (const b of buttons) {
+        const text = (b.innerText || b.textContent || '').trim();
+        const digitMatch = text.match(/^\[?\(?(\d+)\s*s?\)?\]?$/);
+        if (digitMatch && parseInt(digitMatch[1], 10) > 0 && parseInt(digitMatch[1], 10) <= 60) {
+          countdown = digitMatch[1];
+          break;
+        }
+
+        const lower = text.toLowerCase();
+        if (lower === 'vote' || lower.startsWith('vote ') || lower.startsWith('vote(')) {
+          const isDisabled =
+            (b as HTMLButtonElement).disabled ||
+            b.getAttribute('aria-disabled') === 'true' ||
+            b.classList.contains('disabled') ||
+            b.hasAttribute('disabled');
+          if (isDisabled) {
+            hasDisabledVote = true;
+          }
+        }
+      }
+
+      return { countdown, hasDisabledVote };
+    }).catch(() => ({ countdown: undefined, hasDisabledVote: false }));
+
+    if (countdownInfo?.countdown) {
+      console.log(`  ⏳ Ad countdown in progress: ${countdownInfo.countdown}s remaining...`);
+    } else if (countdownInfo?.hasDisabledVote) {
+      console.log('  ⏳ Vote button is currently disabled, waiting for activation...');
+    }
+
+    await sleep(2000);
+  }
+
+  if (!buttonFound) {
+    cleanupListener();
+    const screenshot = await captureScreenshot(page, `no_btn_${accountName}_${botId}`);
+    return {
+      accountName,
+      username,
+      avatarUrl,
+      botId,
+      status: 'FAILED',
+      message: 'Vote button not found or remained disabled',
+      timestamp,
+      screenshotPath: screenshot,
+    };
+  }
+
+  await sleep(800);
+
+  console.log('  → Locating Vote button for click...');
+  let voteBtn = await findVoteButton(page);
+  if (!voteBtn) {
+    await sleep(1000);
+    voteBtn = await findVoteButton(page);
+  }
+
+  if (voteBtn) {
+    console.log(`  → Scrolling Vote button ("${voteBtn.text}") into view...`);
+    try {
+      await page.evaluate((el: any) => {
+        (el as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, voteBtn.handle);
+    } catch {}
+    await sleep(600);
+  }
 
   console.log('  → Clicking Vote button with authentic cursor...');
   let clicked = false;
-  try {
-    if (typeof (page as any).realClick === 'function') {
-      await (page as any).realClick('[data-auto-vote-btn="1"]');
-      clicked = true;
+  let clickMethod = '';
+
+  if (voteBtn?.handle) {
+    try {
+      if (typeof (page as any).realClick === 'function') {
+        await (page as any).realClick(voteBtn.handle);
+        clicked = true;
+        clickMethod = 'realClick(handle)';
+      }
+    } catch (err: any) {
+      if (config.debug) console.log(`  [dbg] realClick(handle) error: ${err.message}`);
     }
-  } catch (err: any) {
-    if (config.debug) console.log(`  [dbg] realClick notice: ${err.message}`);
+  }
+
+  if (!clicked && voteBtn?.box) {
+    try {
+      const clickX = voteBtn.box.x + voteBtn.box.width / 2;
+      const clickY = voteBtn.box.y + voteBtn.box.height / 2;
+      await page.mouse.click(clickX, clickY);
+      clicked = true;
+      clickMethod = 'mouse.click(box)';
+    } catch (err: any) {
+      if (config.debug) console.log(`  [dbg] mouse.click error: ${err.message}`);
+    }
+  }
+
+  if (!clicked && voteBtn?.handle) {
+    try {
+      await voteBtn.handle.click();
+      clicked = true;
+      clickMethod = 'handle.click()';
+    } catch (err: any) {
+      if (config.debug) console.log(`  [dbg] handle.click error: ${err.message}`);
+    }
   }
 
   if (!clicked) {
     try {
-      const btnHandle = await page.$('[data-auto-vote-btn="1"]');
-      if (btnHandle) {
-        const box = await btnHandle.boundingBox();
-        if (box) {
-          await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-          clicked = true;
+      const domClicked = await page.evaluate(() => {
+        const buttons = Array.from(
+          document.querySelectorAll('button, a[role="button"], [role="button"]')
+        ) as HTMLElement[];
+        const btn = buttons.find((b) => {
+          const t = (b.innerText || b.textContent || '').trim().toLowerCase();
+          const isDisabled =
+            (b as HTMLButtonElement).disabled ||
+            b.getAttribute('aria-disabled') === 'true' ||
+            b.classList.contains('disabled') ||
+            b.hasAttribute('disabled');
+          return (t === 'vote' || t.startsWith('vote ') || t.startsWith('vote(')) && !isDisabled;
+        });
+        if (btn) {
+          btn.click();
+          return true;
         }
+        return false;
+      });
+      if (domClicked) {
+        clicked = true;
+        clickMethod = 'DOM evaluate click';
       }
-    } catch {}
+    } catch (err: any) {
+      if (config.debug) console.log(`  [dbg] DOM evaluate click error: ${err.message}`);
+    }
   }
 
-  await page.evaluate(() => {
-    const btn = document.querySelector('[data-auto-vote-btn="1"]') as HTMLButtonElement | null;
-    if (btn) {
-      btn.click();
-    }
-  }).catch(() => {});
+  if (clicked) {
+    console.log(`  👆 Vote button clicked via ${clickMethod}`);
+  } else {
+    console.warn('  ⚠️ Warning: All click methods failed to dispatch');
+  }
 
   console.log('  → Waiting for vote confirmation from Top.gg...');
-  const verifyDeadline = Date.now() + 18000;
+  const verifyDeadline = Date.now() + 25000;
   const clickTime = Date.now();
   let reclicked = false;
   const successMarkers = [
@@ -356,6 +465,8 @@ export async function voteForBot(
     'can vote again',
     'every 12 hours',
     'set a reminder so we can let you know',
+    'you voted for',
+    'vote successfully registered',
   ];
 
   while (Date.now() < verifyDeadline) {
@@ -390,24 +501,22 @@ export async function voteForBot(
       };
     }
 
-    if (!reclicked && Date.now() - clickTime > 5000) {
-      const isStillVoteBtn = await page.evaluate(() => {
-        const btn = document.querySelector('[data-auto-vote-btn="1"]') as HTMLElement | null;
-        if (!btn) return false;
-        const text = (btn.innerText || btn.textContent || '').trim().toLowerCase();
-        return text === 'vote' || text.startsWith('vote ');
-      });
-
-      if (isStillVoteBtn) {
-        console.log('  🔄 Vote button still active, re-dispatching click...');
+    if (!reclicked && Date.now() - clickTime > 10000) {
+      const activeBtn = await findVoteButton(page);
+      if (activeBtn) {
+        console.log(`  🔄 Vote button still active after 10s ("${activeBtn.text}"), re-dispatching click...`);
         reclicked = true;
         try {
           if (typeof (page as any).realClick === 'function') {
-            await (page as any).realClick('[data-auto-vote-btn="1"]');
+            await (page as any).realClick(activeBtn.handle);
+          } else if (activeBtn.box) {
+            await page.mouse.click(activeBtn.box.x + activeBtn.box.width / 2, activeBtn.box.y + activeBtn.box.height / 2);
           } else {
-            await page.click('[data-auto-vote-btn="1"]');
+            await activeBtn.handle.click();
           }
-        } catch {}
+        } catch (err: any) {
+          if (config.debug) console.log(`  [dbg] Re-click error: ${err.message}`);
+        }
       }
     }
 
