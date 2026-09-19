@@ -754,16 +754,13 @@ menu_restart_bot() {
     echo "=== [6] RESTART BOT ==="
     echo ""
 
-    local status
-    status=$(get_bot_status)
-    if [[ "$status" == "NONE" || "$status" == "NOT_INSTALLED" ]]; then
-        echo -e "${YELLOW}⚠️ Bot is not registered in PM2 yet. Initiating start...${NC}"
-        menu_start_bot
-        return
-    fi
+    echo "Compiling TypeScript (npm run build)..."
+    npm run build
 
-    echo "Restarting bot '$PM2_APP_NAME'..."
-    pm2 restart "$PM2_APP_NAME"
+    echo "Restarting bot '$PM2_APP_NAME' with project directory ($SCRIPT_DIR)..."
+    pm2 delete "$PM2_APP_NAME" >/dev/null 2>&1
+    pm2 start npm --name "$PM2_APP_NAME" --cwd "$SCRIPT_DIR" -- run start:xvfb
+    pm2 save >/dev/null 2>&1
     echo ""
     echo "✓ Bot successfully restarted."
     echo ""
