@@ -13,15 +13,10 @@ COOKIE_DIR="$SCRIPT_DIR/cookies"
 DATA_DIR="$SCRIPT_DIR/data"
 ENV_FILE="$SCRIPT_DIR/.env"
 
-# Color Codes
+# Only Error (Red) and Warning (Yellow) are colored. Everything else is plain text.
 RED='\033[0;31m'
-GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-PURPLE='\033[0;35m'
-CYAN='\033[0;36m'
-BOLD='\033[1m'
-NC='\033[0m' # No Color
+NC='\033[0m' # Reset color
 
 mkdir -p "$COOKIE_DIR"
 mkdir -p "$DATA_DIR"
@@ -94,25 +89,25 @@ print_banner() {
     status=$(get_bot_status)
     local status_display
     if [[ "$status" == "ONLINE" ]]; then
-        status_display="${GREEN}● ONLINE (24/7 PM2)${NC}"
+        status_display="ONLINE (24/7 PM2)"
     elif [[ "$status" == "STOPPED" ]]; then
-        status_display="${YELLOW}● STOPPED${NC}"
+        status_display="${YELLOW}STOPPED${NC}"
     elif [[ "$status" == "NOT_INSTALLED" ]]; then
-        status_display="${RED}● PM2 Not Installed${NC}"
+        status_display="${RED}PM2 Not Installed${NC}"
     else
-        status_display="${BLUE}○ NOT RUNNING${NC}"
+        status_display="NOT RUNNING"
     fi
 
     local acc_count
     acc_count=$(count_cookie_accounts)
 
-    echo -e "${CYAN}${BOLD}==============================================================${NC}"
-    echo -e "${CYAN}${BOLD}       🤖 TOP.GG AUTO-VOTE - VPS MANAGER (ALL-IN-ONE)         ${NC}"
-    echo -e "${CYAN}${BOLD}==============================================================${NC}"
+    echo "=============================================================="
+    echo "       TOP.GG AUTO-VOTE - VPS MANAGER (ALL-IN-ONE)            "
+    echo "=============================================================="
     echo -e " Bot Status       : $status_display"
-    echo -e " Cookie Accounts  : ${GREEN}$acc_count account(s)${NC} detected in cookies/"
-    echo -e " Project Directory: ${PURPLE}$SCRIPT_DIR${NC}"
-    echo -e "${CYAN}--------------------------------------------------------------${NC}"
+    echo " Cookie Accounts  : $acc_count account(s) detected in cookies/"
+    echo " Project Directory: $SCRIPT_DIR"
+    echo "--------------------------------------------------------------"
 }
 
 pause() {
@@ -124,9 +119,9 @@ pause() {
 # Robust Multi-line JSON Paste Handler (Auto-detects completion on ']')
 # ------------------------------------------------------------------------------
 read_json_paste() {
-    echo -e "${YELLOW}Please PASTE your cookie JSON content below.${NC}"
-    echo -e "${CYAN}(Paste will auto-complete when the closing ']' is reached, or type '${GREEN}END${CYAN}' on a new line and press Enter):${NC}"
-    echo -e "${PURPLE}--------------------------------------------------------------${NC}"
+    echo "Please PASTE your cookie JSON content below."
+    echo "(Paste will auto-complete when the closing ']' is reached, or type 'END' on a new line and press Enter):"
+    echo "--------------------------------------------------------------"
     local content=""
     local line=""
     while IFS= read -r line; do
@@ -153,7 +148,8 @@ read_json_paste() {
             }
             " "$content" 2>/dev/null)
             if [[ "$is_valid" == "VALID" ]]; then
-                echo -e "\n${GREEN}✓ JSON paste successfully detected and validated!${NC}"
+                echo ""
+                echo "✓ JSON paste successfully detected and validated!"
                 echo "$content"
                 return 0
             fi
@@ -188,7 +184,8 @@ read_json_paste() {
 # System Prerequisites Installer (Compatible with Ubuntu 20.04/22.04/24.04 Noble & Debian)
 # ------------------------------------------------------------------------------
 install_system_prerequisites() {
-    echo -e "\n${BLUE}🔍 Checking Linux system dependencies (Node.js, Xvfb, Chromium)...${NC}"
+    echo ""
+    echo "Checking Linux system dependencies (Node.js, Xvfb, Chromium)..."
     local need_apt=0
     
     if ! command -v node >/dev/null 2>&1; then
@@ -205,10 +202,11 @@ install_system_prerequisites() {
     fi
 
     if [[ $need_apt -eq 1 ]]; then
-        echo -e "\n${GREEN}📦 Installing system dependencies automatically (requires sudo)...${NC}"
+        echo ""
+        echo "Installing system dependencies automatically (requires sudo)..."
         sudo apt update -y
         if ! command -v node >/dev/null 2>&1; then
-            echo -e "${BLUE}Installing Node.js 20...${NC}"
+            echo "Installing Node.js 20..."
             curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
             sudo apt install -y nodejs
         fi
@@ -221,11 +219,11 @@ install_system_prerequisites() {
         sudo apt install -y libgtk-3-0t64 2>/dev/null || sudo apt install -y libgtk-3-0 2>/dev/null || true
         sudo apt install -y chromium-browser 2>/dev/null || sudo apt install -y chromium 2>/dev/null || true
     else
-        echo -e "${GREEN}✅ All core system dependencies (Node.js, Git, Xvfb) are ready.${NC}"
+        echo "✓ All core system dependencies (Node.js, Git, Xvfb) are ready."
     fi
 
     if ! command -v pm2 >/dev/null 2>&1; then
-        echo -e "${YELLOW}📦 Installing PM2 Process Manager globally...${NC}"
+        echo "Installing PM2 Process Manager globally..."
         sudo npm install -g pm2
     fi
 }
@@ -235,13 +233,14 @@ install_system_prerequisites() {
 # ------------------------------------------------------------------------------
 menu_full_setup() {
     print_banner
-    echo -e "${BOLD}${GREEN}=== [1] SETUP & LAUNCH PROJECT (FULL WIZARD) ===${NC}\n"
+    echo "=== [1] SETUP & LAUNCH PROJECT (FULL WIZARD) ==="
+    echo ""
 
     if is_bot_online; then
         echo -e "${YELLOW}⚠️ WARNING: Bot '$PM2_APP_NAME' is ALREADY RUNNING!${NC}"
         read -rp "Do you want to stop and reconfigure it? (y/N): " confirm_restart
         if [[ ! "$confirm_restart" =~ ^[yY]$ ]]; then
-            echo -e "${BLUE}Operation cancelled.${NC}"
+            echo "Operation cancelled."
             pause
             return
         fi
@@ -250,10 +249,10 @@ menu_full_setup() {
 
     # 0. Check if git repository files exist in current folder
     if [[ ! -f "$SCRIPT_DIR/package.json" ]]; then
-        echo -e "${YELLOW}📁 Project repository not detected in this directory ($SCRIPT_DIR).${NC}"
+        echo -e "${YELLOW}⚠️ Project repository not detected in this directory ($SCRIPT_DIR).${NC}"
         read -rp "Enter your GitHub Repository URL: " git_repo_url
         if [[ -n "$git_repo_url" ]]; then
-            echo -e "${BLUE}Cloning repository from $git_repo_url...${NC}"
+            echo "Cloning repository from $git_repo_url..."
             git clone "$git_repo_url" "$SCRIPT_DIR/auto-vote-topgg"
             if [[ -d "$SCRIPT_DIR/auto-vote-topgg" ]]; then
                 cd "$SCRIPT_DIR/auto-vote-topgg" || exit 1
@@ -270,7 +269,8 @@ menu_full_setup() {
     install_system_prerequisites
 
     # 2. Install npm dependencies
-    echo -e "\n${BLUE}📦 Installing project npm dependencies...${NC}"
+    echo ""
+    echo "Installing project npm dependencies..."
     npm install
     if [[ $? -ne 0 ]]; then
         echo -e "${RED}❌ Failed during 'npm install'. Check your VPS internet connection.${NC}"
@@ -279,20 +279,22 @@ menu_full_setup() {
     fi
 
     # 3. Build TypeScript
-    echo -e "\n${BLUE}🔨 Compiling TypeScript (npm run build)...${NC}"
+    echo ""
+    echo "Compiling TypeScript (npm run build)..."
     npm run build
     if [[ $? -ne 0 ]]; then
         echo -e "${RED}❌ Compilation failed during 'npm run build'.${NC}"
         pause
         return
     fi
-    echo -e "${GREEN}✅ Compilation completed successfully.${NC}"
+    echo "✓ Compilation completed successfully."
 
     # 4. Input Account Cookies
-    echo -e "\n${CYAN}==============================================================${NC}"
-    echo -e "${BOLD}${CYAN}           TOP.GG COOKIE ACCOUNTS SETUP                       ${NC}"
-    echo -e "${CYAN}==============================================================${NC}"
-    echo -e "How many Top.gg accounts do you want to configure?"
+    echo ""
+    echo "=============================================================="
+    echo "           TOP.GG COOKIE ACCOUNTS SETUP                       "
+    echo "=============================================================="
+    echo "How many Top.gg accounts do you want to configure?"
     read -rp "Number of accounts (e.g. 2): " total_accounts
 
     if [[ ! "$total_accounts" =~ ^[0-9]+$ ]] || [[ "$total_accounts" -le 0 ]]; then
@@ -303,7 +305,8 @@ menu_full_setup() {
     for ((i=1; i<=total_accounts; i++)); do
         local saved=0
         while [[ $saved -eq 0 ]]; do
-            echo -e "\n${BOLD}${GREEN}--- Input Cookie for Account #$i ---${NC}"
+            echo ""
+            echo "--- Input Cookie for Account #$i ---"
             local json_data
             json_data=$(read_json_paste)
             if [[ $? -eq 0 && -n "$json_data" ]]; then
@@ -311,8 +314,8 @@ menu_full_setup() {
                 echo "$json_data" > "$COOKIE_DIR/$filename"
                 local user_detect
                 user_detect=$(get_cookie_username "$COOKIE_DIR/$filename")
-                echo -e "${GREEN}✅ Cookie for Account #$i saved to: cookies/$filename${NC}"
-                echo -e "${GREEN}   Discord User detected: [ $user_detect ]${NC}"
+                echo "✓ Cookie for Account #$i saved to: cookies/$filename"
+                echo "  Discord User detected: [ $user_detect ]"
                 saved=1
             else
                 read -rp "Save failed. Retry for account #$i? (y/N): " retry
@@ -324,9 +327,10 @@ menu_full_setup() {
     done
 
     # 5. Input Configuration (.env)
-    echo -e "\n${CYAN}==============================================================${NC}"
-    echo -e "${BOLD}${CYAN}               BOT CONFIGURATION (.ENV)                       ${NC}"
-    echo -e "${CYAN}==============================================================${NC}"
+    echo ""
+    echo "=============================================================="
+    echo "               BOT CONFIGURATION (.ENV)                       "
+    echo "=============================================================="
 
     # BOT_IDS
     read -rp "Enter target Top.gg Bot ID(s) (Default: 928711702596423740, comma-separated for multi-bot): " input_bot_ids
@@ -391,20 +395,23 @@ BOT_DELAY=$BOT_DELAY
 PROXY_URL=$PROXY_URL
 EOF
 
-    echo -e "\n${GREEN}✅ .env file successfully created and saved!${NC}"
+    echo ""
+    echo "✓ .env file successfully created and saved!"
 
     # 6. Launch with PM2
-    echo -e "\n${BLUE}🚀 Starting bot with PM2 (Virtual Display Xvfb)...${NC}"
+    echo ""
+    echo "Starting bot with PM2 (Virtual Display Xvfb)..."
     pm2 delete "$PM2_APP_NAME" >/dev/null 2>&1
     pm2 start npm --name "$PM2_APP_NAME" -- run start:xvfb
     pm2 save >/dev/null 2>&1
 
-    echo -e "\n${GREEN}==============================================================${NC}"
-    echo -e "${BOLD}${GREEN}🎉 SUCCESS! Top.gg Auto-Vote is now running 24/7 in PM2!     ${NC}"
-    echo -e "${GREEN}==============================================================${NC}"
-    echo -e "Quick commands:"
-    echo -e " • View Logs   : ${CYAN}pm2 logs $PM2_APP_NAME${NC}"
-    echo -e " • Check Status: ${CYAN}pm2 status${NC}"
+    echo ""
+    echo "=============================================================="
+    echo "🎉 SUCCESS! Top.gg Auto-Vote is now running 24/7 in PM2!     "
+    echo "=============================================================="
+    echo "Quick commands:"
+    echo " • View Logs   : pm2 logs $PM2_APP_NAME"
+    echo " • Check Status: pm2 status"
     echo ""
     read -rp "Would you like to view bot logs right now? (Y/n): " view_now
     if [[ "$view_now" =~ ^[nN]$ ]]; then
@@ -419,7 +426,8 @@ EOF
 menu_manage_cookies() {
     while true; do
         print_banner
-        echo -e "${BOLD}${GREEN}=== [2] MANAGE COOKIE ACCOUNTS ===${NC}\n"
+        echo "=== [2] MANAGE COOKIE ACCOUNTS ==="
+        echo ""
 
         # List existing cookies
         local files=()
@@ -428,9 +436,10 @@ menu_manage_cookies() {
         done < <(find "$COOKIE_DIR" -maxdepth 1 -name "*.json" -print0 | sort -z)
 
         if [[ ${#files[@]} -eq 0 ]]; then
-            echo -e "${YELLOW}No cookie files found in cookies/ directory.${NC}\n"
+            echo -e "${YELLOW}No cookie files found in cookies/ directory.${NC}"
+            echo ""
         else
-            echo -e "${BOLD}Available Accounts:${NC}"
+            echo "Available Accounts:"
             local idx=1
             for f in "${files[@]}"; do
                 local fname
@@ -439,23 +448,24 @@ menu_manage_cookies() {
                 user=$(get_cookie_username "$f")
                 local mtime
                 mtime=$(date -r "$f" "+%Y-%m-%d %H:%M" 2>/dev/null || echo "-")
-                echo -e "  ${CYAN}[$idx]${NC} ${BOLD}$fname${NC} -> Discord: ${GREEN}$user${NC} (Modified: $mtime)"
+                echo "  [$idx] $fname -> Discord: $user (Modified: $mtime)"
                 ((idx++))
             done
             echo ""
         fi
 
-        echo -e "${BOLD}Actions:${NC}"
-        echo -e "  ${GREEN}[1]${NC} Add New Account"
-        echo -e "  ${YELLOW}[2]${NC} Edit / Replace Existing Account Cookie"
-        echo -e "  ${RED}[3]${NC} Delete Account Cookie"
-        echo -e "  ${BLUE}[0]${NC} Back to Main Menu"
+        echo "Actions:"
+        echo "  [1] Add New Account"
+        echo "  [2] Edit / Replace Existing Account Cookie"
+        echo "  [3] Delete Account Cookie"
+        echo "  [0] Back to Main Menu"
         echo ""
         read -rp "Select option [0-3]: " sub_opt
 
         case "$sub_opt" in
             1)
-                echo -e "\n${BOLD}${GREEN}--- Add New Account Cookie ---${NC}"
+                echo ""
+                echo "--- Add New Account Cookie ---"
                 local next_num=1
                 while [[ -f "$COOKIE_DIR/account${next_num}.json" ]]; do
                     ((next_num++))
@@ -472,32 +482,34 @@ menu_manage_cookies() {
                     echo "$json_data" > "$COOKIE_DIR/$target_file"
                     local user_detect
                     user_detect=$(get_cookie_username "$COOKIE_DIR/$target_file")
-                    echo -e "\n${GREEN}✅ Successfully added account: $target_file [ $user_detect ]${NC}"
+                    echo ""
+                    echo "✓ Successfully added account: $target_file [ $user_detect ]"
                     if is_bot_online; then
-                        echo -e "${BLUE}🔄 Restarting bot to automatically load the new account...${NC}"
+                        echo "Restarting bot to automatically load the new account..."
                         pm2 restart "$PM2_APP_NAME" >/dev/null 2>&1
-                        echo -e "${GREEN}✅ Bot successfully restarted.${NC}"
+                        echo "✓ Bot successfully restarted."
                     fi
                 fi
                 pause
                 ;;
             2)
                 if [[ ${#files[@]} -eq 0 ]]; then
-                    echo -e "${RED}No cookie files available to edit!${NC}"
+                    echo -e "${RED}❌ No cookie files available to edit!${NC}"
                     pause
                     continue
                 fi
-                echo -e "\n${BOLD}${YELLOW}--- Edit / Replace Account Cookie ---${NC}"
+                echo ""
+                echo "--- Edit / Replace Account Cookie ---"
                 read -rp "Select account number to edit (1-${#files[@]}): " edit_idx
                 if [[ ! "$edit_idx" =~ ^[0-9]+$ ]] || [[ "$edit_idx" -lt 1 ]] || [[ "$edit_idx" -gt ${#files[@]} ]]; then
-                    echo -e "${RED}Invalid account number!${NC}"
+                    echo -e "${RED}❌ Invalid account number!${NC}"
                     pause
                     continue
                 fi
                 local target_file="${files[$((edit_idx-1))]}"
                 local fname
                 fname=$(basename "$target_file")
-                echo -e "Editing file: ${BOLD}$fname${NC}"
+                echo "Editing file: $fname"
 
                 local json_data
                 json_data=$(read_json_paste)
@@ -505,25 +517,27 @@ menu_manage_cookies() {
                     echo "$json_data" > "$target_file"
                     local user_detect
                     user_detect=$(get_cookie_username "$target_file")
-                    echo -e "\n${GREEN}✅ Successfully updated cookie: $fname [ $user_detect ]${NC}"
+                    echo ""
+                    echo "✓ Successfully updated cookie: $fname [ $user_detect ]"
                     if is_bot_online; then
-                        echo -e "${BLUE}🔄 Restarting bot to apply the updated cookie immediately...${NC}"
+                        echo "Restarting bot to apply the updated cookie immediately..."
                         pm2 restart "$PM2_APP_NAME" >/dev/null 2>&1
-                        echo -e "${GREEN}✅ Bot successfully restarted with updated cookie.${NC}"
+                        echo "✓ Bot successfully restarted with updated cookie."
                     fi
                 fi
                 pause
                 ;;
             3)
                 if [[ ${#files[@]} -eq 0 ]]; then
-                    echo -e "${RED}No cookie files available to delete!${NC}"
+                    echo -e "${RED}❌ No cookie files available to delete!${NC}"
                     pause
                     continue
                 fi
-                echo -e "\n${BOLD}${RED}--- Delete Account Cookie ---${NC}"
+                echo ""
+                echo "--- Delete Account Cookie ---"
                 read -rp "Select account number to delete (1-${#files[@]}): " del_idx
                 if [[ ! "$del_idx" =~ ^[0-9]+$ ]] || [[ "$del_idx" -lt 1 ]] || [[ "$del_idx" -gt ${#files[@]} ]]; then
-                    echo -e "${RED}Invalid account number!${NC}"
+                    echo -e "${RED}❌ Invalid account number!${NC}"
                     pause
                     continue
                 fi
@@ -533,13 +547,13 @@ menu_manage_cookies() {
                 read -rp "Are you sure you want to delete '$fname'? (y/N): " confirm_del
                 if [[ "$confirm_del" =~ ^[yY]$ ]]; then
                     rm -f "$target_file"
-                    echo -e "${GREEN}✅ File $fname deleted.${NC}"
+                    echo "✓ File $fname deleted."
                     if is_bot_online; then
-                        echo -e "${BLUE}🔄 Restarting bot...${NC}"
+                        echo "Restarting bot..."
                         pm2 restart "$PM2_APP_NAME" >/dev/null 2>&1
                     fi
                 else
-                    echo -e "${BLUE}Deletion cancelled.${NC}"
+                    echo "Deletion cancelled."
                 fi
                 pause
                 ;;
@@ -547,7 +561,7 @@ menu_manage_cookies() {
                 break
                 ;;
             *)
-                echo -e "${RED}Invalid option!${NC}"
+                echo -e "${RED}❌ Invalid option!${NC}"
                 sleep 1
                 ;;
         esac
@@ -559,10 +573,11 @@ menu_manage_cookies() {
 # ------------------------------------------------------------------------------
 menu_edit_env() {
     print_banner
-    echo -e "${BOLD}${GREEN}=== [3] EDIT CONFIGURATION (.ENV) ===${NC}\n"
+    echo "=== [3] EDIT CONFIGURATION (.ENV) ==="
+    echo ""
 
     if [[ ! -f "$ENV_FILE" ]]; then
-        echo -e "${YELLOW}File .env not found. Creating from .env.example...${NC}"
+        echo -e "${YELLOW}⚠️ File .env not found. Creating from .env.example...${NC}"
         cp "$SCRIPT_DIR/.env.example" "$ENV_FILE" 2>/dev/null || touch "$ENV_FILE"
     fi
 
@@ -581,20 +596,20 @@ menu_edit_env() {
     local cur_bdelay=$(get_env_val "BOT_DELAY")
     local cur_proxy=$(get_env_val "PROXY_URL")
 
-    echo -e "${CYAN}Current Configuration:${NC}"
-    echo -e " 1) BOT_IDS                : ${BOLD}${cur_bots:-Not configured}${NC}"
-    echo -e " 2) DISCORD_WEBHOOK_URL    : ${BOLD}${cur_webhook:-None}${NC}"
-    echo -e " 3) SEND_ERROR_SCREENSHOTS : ${BOLD}${cur_screens:-1}${NC}"
-    echo -e " 4) DEBUG                  : ${BOLD}${cur_debug:-0}${NC}"
-    echo -e " 5) HEADLESS               : ${BOLD}${cur_headless:-true}${NC}"
-    echo -e " 6) ACCOUNT_DELAY_MIN/MAX  : ${BOLD}${cur_dmin:-120}s - ${cur_dmax:-180}s${NC}"
-    echo -e " 7) BOT_DELAY              : ${BOLD}${cur_bdelay:-60}s${NC}"
-    echo -e " 8) PROXY_URL              : ${BOLD}${cur_proxy:-None}${NC}"
+    echo "Current Configuration:"
+    echo " 1) BOT_IDS                : ${cur_bots:-Not configured}"
+    echo " 2) DISCORD_WEBHOOK_URL    : ${cur_webhook:-None}"
+    echo " 3) SEND_ERROR_SCREENSHOTS : ${cur_screens:-1}"
+    echo " 4) DEBUG                  : ${cur_debug:-0}"
+    echo " 5) HEADLESS               : ${cur_headless:-true}"
+    echo " 6) ACCOUNT_DELAY_MIN/MAX  : ${cur_dmin:-120}s - ${cur_dmax:-180}s"
+    echo " 7) BOT_DELAY              : ${cur_bdelay:-60}s"
+    echo " 8) PROXY_URL              : ${cur_proxy:-None}"
     echo ""
-    echo -e "Choose editing method:"
-    echo -e " [1] Interactive Questionnaire (Easy)"
-    echo -e " [2] Open directly with 'nano' editor"
-    echo -e " [0] Cancel / Back"
+    echo "Choose editing method:"
+    echo " [1] Interactive Questionnaire (Easy)"
+    echo " [2] Open directly with 'nano' editor"
+    echo " [0] Cancel / Back"
     read -rp "Select [0-2]: " edit_mode
 
     if [[ "$edit_mode" == "1" ]]; then
@@ -636,21 +651,23 @@ ACCOUNT_DELAY_MAX=$ACCOUNT_DELAY_MAX
 BOT_DELAY=$BOT_DELAY
 PROXY_URL=$PROXY_URL
 EOF
-        echo -e "\n${GREEN}✅ .env configuration updated successfully!${NC}"
+        echo ""
+        echo "✓ .env configuration updated successfully!"
 
     elif [[ "$edit_mode" == "2" ]]; then
         nano "$ENV_FILE"
-        echo -e "\n${GREEN}✅ .env file saved.${NC}"
+        echo ""
+        echo "✓ .env file saved."
     else
-        echo -e "${BLUE}Cancelled.${NC}"
+        echo "Cancelled."
         pause
         return
     fi
 
     if is_bot_online; then
-        echo -e "${BLUE}🔄 Restarting bot to apply new configuration...${NC}"
+        echo "Restarting bot to apply new configuration..."
         pm2 restart "$PM2_APP_NAME" >/dev/null 2>&1
-        echo -e "${GREEN}✅ Bot successfully restarted.${NC}"
+        echo "✓ Bot successfully restarted."
     fi
     pause
 }
@@ -660,13 +677,15 @@ EOF
 # ------------------------------------------------------------------------------
 menu_start_bot() {
     print_banner
-    echo -e "${BOLD}${GREEN}=== [4] START BOT ===${NC}\n"
+    echo "=== [4] START BOT ==="
+    echo ""
 
     # Duplication check
     if is_bot_online; then
         echo -e "${YELLOW}⚠️ WARNING: Bot '$PM2_APP_NAME' is ALREADY RUNNING (Status: ONLINE)!${NC}"
-        echo -e "${RED}⛔ Duplicate startup is blocked to prevent concurrent voting conflicts.${NC}\n"
-        echo -e "Use option [7] to view live Logs or [6] to Restart."
+        echo -e "${RED}⛔ Duplicate startup is blocked to prevent concurrent voting conflicts.${NC}"
+        echo ""
+        echo "Use option [7] to view live Logs or [6] to Restart."
         pause
         return
     fi
@@ -676,7 +695,7 @@ menu_start_bot() {
     acc_count=$(count_cookie_accounts)
     if [[ $acc_count -eq 0 ]]; then
         echo -e "${RED}❌ No cookie accounts found in cookies/ directory!${NC}"
-        echo -e "Please use menu [2] Manage Cookie Accounts to add account cookies first."
+        echo "Please use menu [2] Manage Cookie Accounts to add account cookies first."
         pause
         return
     fi
@@ -692,12 +711,13 @@ menu_start_bot() {
         fi
     fi
 
-    echo -e "${BLUE}🚀 Starting bot with PM2 (Virtual Display Xvfb)...${NC}"
+    echo "Starting bot with PM2 (Virtual Display Xvfb)..."
     pm2 delete "$PM2_APP_NAME" >/dev/null 2>&1
     pm2 start npm --name "$PM2_APP_NAME" -- run start:xvfb
     pm2 save >/dev/null 2>&1
 
-    echo -e "\n${GREEN}✅ Bot '$PM2_APP_NAME' successfully started in the background!${NC}"
+    echo ""
+    echo "✓ Bot '$PM2_APP_NAME' successfully started in the background!"
     echo ""
     read -rp "View logs now? (Y/n): " ans
     if [[ ! "$ans" =~ ^[nN]$ ]]; then
@@ -710,7 +730,8 @@ menu_start_bot() {
 # ------------------------------------------------------------------------------
 menu_stop_bot() {
     print_banner
-    echo -e "${BOLD}${YELLOW}=== [5] STOP BOT ===${NC}\n"
+    echo "=== [5] STOP BOT ==="
+    echo ""
 
     if ! is_bot_online; then
         echo -e "${YELLOW}Bot '$PM2_APP_NAME' is not currently running.${NC}"
@@ -718,9 +739,10 @@ menu_stop_bot() {
         return
     fi
 
-    echo -e "${BLUE}Stopping bot '$PM2_APP_NAME'...${NC}"
+    echo "Stopping bot '$PM2_APP_NAME'..."
     pm2 stop "$PM2_APP_NAME"
-    echo -e "\n${GREEN}✅ Bot successfully stopped.${NC}"
+    echo ""
+    echo "✓ Bot successfully stopped."
     pause
 }
 
@@ -729,19 +751,21 @@ menu_stop_bot() {
 # ------------------------------------------------------------------------------
 menu_restart_bot() {
     print_banner
-    echo -e "${BOLD}${GREEN}=== [6] RESTART BOT ===${NC}\n"
+    echo "=== [6] RESTART BOT ==="
+    echo ""
 
     local status
     status=$(get_bot_status)
     if [[ "$status" == "NONE" || "$status" == "NOT_INSTALLED" ]]; then
-        echo -e "${YELLOW}Bot is not registered in PM2 yet. Initiating start...${NC}"
+        echo -e "${YELLOW}⚠️ Bot is not registered in PM2 yet. Initiating start...${NC}"
         menu_start_bot
         return
     fi
 
-    echo -e "${BLUE}🔄 Restarting bot '$PM2_APP_NAME'...${NC}"
+    echo "Restarting bot '$PM2_APP_NAME'..."
     pm2 restart "$PM2_APP_NAME"
-    echo -e "\n${GREEN}✅ Bot successfully restarted.${NC}"
+    echo ""
+    echo "✓ Bot successfully restarted."
     echo ""
     read -rp "View logs now? (Y/n): " ans
     if [[ ! "$ans" =~ ^[nN]$ ]]; then
@@ -754,9 +778,11 @@ menu_restart_bot() {
 # ------------------------------------------------------------------------------
 menu_view_logs() {
     print_banner
-    echo -e "${BOLD}${CYAN}=== [7] VIEW REAL-TIME LOGS ===${NC}\n"
-    echo -e "${YELLOW}Streaming live colored logs from PM2.${NC}"
-    echo -e "${GREEN}Press [Ctrl + C] at any time to return to the menu.${NC}\n"
+    echo "=== [7] VIEW REAL-TIME LOGS ==="
+    echo ""
+    echo "Streaming live logs from PM2."
+    echo "Press [Ctrl + C] at any time to return to the menu."
+    echo ""
     sleep 1
     pm2 logs "$PM2_APP_NAME" --lines 50
 }
@@ -766,12 +792,14 @@ menu_view_logs() {
 # ------------------------------------------------------------------------------
 menu_status_info() {
     print_banner
-    echo -e "${BOLD}${CYAN}=== [8] SYSTEM & BOT STATUS ===${NC}\n"
+    echo "=== [8] SYSTEM & BOT STATUS ==="
+    echo ""
 
-    echo -e "${BOLD}PM2 Process Details:${NC}"
+    echo "PM2 Process Details:"
     pm2 show "$PM2_APP_NAME" 2>/dev/null || pm2 list
 
-    echo -e "\n${BOLD}Cooldown Database (${DATA_DIR}/database.json):${NC}"
+    echo ""
+    echo "Cooldown Database ($DATA_DIR/database.json):"
     if [[ -f "$DATA_DIR/database.json" ]]; then
         node -e "
         try {
@@ -792,7 +820,8 @@ menu_status_info() {
         echo "Database file not created yet (will be created automatically on the first vote)."
     fi
 
-    echo -e "\n${BOLD}VPS Resource Usage:${NC}"
+    echo ""
+    echo "VPS Resource Usage:"
     free -h 2>/dev/null | awk 'NR==1{printf "  RAM Total: %s\n", $2} NR==2{printf "  RAM Used: %s (Free: %s)\n", $3, $4}' || true
     df -h / 2>/dev/null | awk 'NR==2{printf "  Disk Used: %s of %s (%s)\n", $3, $2, $5}' || true
 
@@ -804,7 +833,8 @@ menu_status_info() {
 # ------------------------------------------------------------------------------
 menu_update_repo() {
     print_banner
-    echo -e "${BOLD}${CYAN}=== [9] UPDATE PROJECT FROM GITHUB ===${NC}\n"
+    echo "=== [9] UPDATE PROJECT FROM GITHUB ==="
+    echo ""
 
     if [[ ! -d "$SCRIPT_DIR/.git" ]]; then
         echo -e "${YELLOW}⚠️ This directory is not a git repository. Cannot run git pull.${NC}"
@@ -812,18 +842,24 @@ menu_update_repo() {
         return
     fi
 
-    echo -e "${BLUE}⬇️ Fetching latest updates from GitHub (git pull)...${NC}"
+    echo "Fetching latest updates from GitHub (git pull)..."
+    # Automatically stash or checkout local run.sh changes so git pull succeeds seamlessly
+    git checkout run.sh >/dev/null 2>&1 || git stash >/dev/null 2>&1
     git pull
     if [[ $? -ne 0 ]]; then
-        echo -e "${RED}❌ Git pull failed. Please check for local merge conflicts.${NC}"
-        pause
-        return
+        echo -e "${YELLOW}⚠️ Standard git pull encountered a conflict. Resetting to remote origin...${NC}"
+        local branch_name
+        branch_name=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")
+        git fetch origin "$branch_name" >/dev/null 2>&1
+        git reset --hard "origin/$branch_name"
     fi
 
-    echo -e "\n${BLUE}📦 Updating dependencies (npm install)...${NC}"
+    echo ""
+    echo "Updating dependencies (npm install)..."
     npm install
 
-    echo -e "\n${BLUE}🔨 Recompiling TypeScript (npm run build)...${NC}"
+    echo ""
+    echo "Recompiling TypeScript (npm run build)..."
     npm run build
     if [[ $? -ne 0 ]]; then
         echo -e "${RED}❌ TypeScript compilation failed!${NC}"
@@ -831,12 +867,13 @@ menu_update_repo() {
         return
     fi
 
-    echo -e "\n${GREEN}✅ Project updated successfully.${NC}"
+    echo ""
+    echo "✓ Project updated successfully."
 
     if is_bot_online; then
-        echo -e "${BLUE}🔄 Restarting bot to apply new code immediately...${NC}"
+        echo "Restarting bot to apply new code immediately..."
         pm2 restart "$PM2_APP_NAME" >/dev/null 2>&1
-        echo -e "${GREEN}✅ Bot successfully restarted with latest code!${NC}"
+        echo "✓ Bot successfully restarted with latest code!"
     fi
     pause
 }
@@ -846,18 +883,22 @@ menu_update_repo() {
 # ------------------------------------------------------------------------------
 menu_delete_bot() {
     print_banner
-    echo -e "${BOLD}${RED}=== [10] REMOVE BOT FROM PM2 ===${NC}\n"
+    echo "=== [10] REMOVE BOT FROM PM2 ==="
+    echo ""
     echo -e "${YELLOW}Notice: This will stop and remove '$PM2_APP_NAME' from the PM2 process list.${NC}"
-    echo -e "(Your .env configuration, cookies, and database files will NOT be deleted).\n"
+    echo "(Your .env configuration, cookies, and database files will NOT be deleted)."
+    echo ""
     read -rp "Are you sure you want to remove it? (y/N): " confirm_del
 
     if [[ "$confirm_del" =~ ^[yY]$ ]]; then
         pm2 stop "$PM2_APP_NAME" >/dev/null 2>&1
         pm2 delete "$PM2_APP_NAME" >/dev/null 2>&1
         pm2 save >/dev/null 2>&1
-        echo -e "\n${GREEN}✅ Bot '$PM2_APP_NAME' successfully removed from PM2.${NC}"
+        echo ""
+        echo "✓ Bot '$PM2_APP_NAME' successfully removed from PM2."
     else
-        echo -e "\n${BLUE}Removal cancelled.${NC}"
+        echo ""
+        echo "Removal cancelled."
     fi
     pause
 }
@@ -867,18 +908,18 @@ menu_delete_bot() {
 # ------------------------------------------------------------------------------
 while true; do
     print_banner
-    echo -e "${BOLD}MAIN MENU:${NC}"
-    echo -e "  ${GREEN}[1]${NC}  🚀 Setup & Launch Project (Full Wizard)"
-    echo -e "  ${CYAN}[2]${NC}  🍪 Manage Cookie Accounts (Add / Edit / Delete)"
-    echo -e "  ${YELLOW}[3]${NC}  ⚙️  Edit Configuration (.env) (Bot IDs, Webhook, Delays, Proxy)"
-    echo -e "  ${GREEN}[4]${NC}  ▶️  Start Bot (Prevents duplicate instances)"
-    echo -e "  ${RED}[5]${NC}  ⏹️  Stop Bot"
-    echo -e "  ${BLUE}[6]${NC}  🔄 Restart Bot"
-    echo -e "  ${PURPLE}[7]${NC}  📜 View Real-Time Logs (PM2 Logs)"
-    echo -e "  ${CYAN}[8]${NC}  📊 Check System & Bot Status"
-    echo -e "  ${BLUE}[9]${NC}  ⬇️  Update Project from GitHub (Git Pull & Rebuild)"
-    echo -e "  ${RED}[10]${NC} 🗑️  Remove Bot from PM2"
-    echo -e "  ${NC}[0]${NC}   🚪 Exit"
+    echo "MAIN MENU:"
+    echo "  [1]  Setup & Launch Project (Full Wizard)"
+    echo "  [2]  Manage Cookie Accounts (Add / Edit / Delete)"
+    echo "  [3]  Edit Configuration (.env) (Bot IDs, Webhook, Delays, Proxy)"
+    echo "  [4]  Start Bot (Prevents duplicate instances)"
+    echo "  [5]  Stop Bot"
+    echo "  [6]  Restart Bot"
+    echo "  [7]  View Real-Time Logs (PM2 Logs)"
+    echo "  [8]  Check System & Bot Status"
+    echo "  [9]  Update Project from GitHub (Git Pull & Rebuild)"
+    echo "  [10] Remove Bot from PM2"
+    echo "  [0]  Exit"
     echo ""
     read -rp "Select an option [0-10]: " main_choice
 
@@ -894,11 +935,14 @@ while true; do
         9) menu_update_repo ;;
         10) menu_delete_bot ;;
         0)
-            echo -e "\n${GREEN}Goodbye! Any bot running in PM2 will continue running 24/7 in the background.${NC}\n"
+            echo ""
+            echo "Goodbye! Any bot running in PM2 will continue running 24/7 in the background."
+            echo ""
             exit 0
             ;;
         *)
-            echo -e "\n${RED}Invalid option! Please enter a number from 0 to 10.${NC}"
+            echo ""
+            echo -e "${RED}❌ Invalid option! Please enter a number from 0 to 10.${NC}"
             sleep 1.5
             ;;
     esac
