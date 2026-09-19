@@ -119,9 +119,9 @@ pause() {
 # Robust Multi-line JSON Paste Handler (Auto-detects completion on ']')
 # ------------------------------------------------------------------------------
 read_json_paste() {
-    echo "Please PASTE your cookie JSON content below."
-    echo "(Paste will auto-complete when the closing ']' is reached, or type 'END' on a new line and press Enter):"
-    echo "--------------------------------------------------------------"
+    echo "Please PASTE your cookie JSON content below." >&2
+    echo "(Paste will auto-complete when the closing ']' is reached, or type 'END' on a new line and press Enter):" >&2
+    echo "--------------------------------------------------------------" >&2
     local content=""
     local line=""
     while IFS= read -r line; do
@@ -148,8 +148,8 @@ read_json_paste() {
             }
             " "$content" 2>/dev/null)
             if [[ "$is_valid" == "VALID" ]]; then
-                echo ""
-                echo "✓ JSON paste successfully detected and validated!"
+                echo "" >&2
+                echo "✓ JSON paste successfully detected and validated!" >&2
                 echo "$content"
                 return 0
             fi
@@ -172,7 +172,7 @@ read_json_paste() {
     " "$content" 2>/dev/null)
 
     if [[ "$is_valid" != "VALID" ]]; then
-        echo -e "${RED}❌ Error: The pasted text is not valid JSON!${NC}"
+        echo -e "${RED}❌ Error: The pasted text is not valid JSON!${NC}" >&2
         return 1
     fi
 

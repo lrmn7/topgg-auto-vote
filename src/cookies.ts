@@ -114,6 +114,19 @@ function parseCookiesFromEnvValue(envVal: string, defaultName: string): AccountC
     } catch {}
   }
 
+  // Extract JSON payload if surrounded by any terminal text or prompts
+  const firstBracket = jsonText.indexOf('[');
+  const lastBracket = jsonText.lastIndexOf(']');
+  if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
+    jsonText = jsonText.substring(firstBracket, lastBracket + 1);
+  } else {
+    const firstBrace = jsonText.indexOf('{');
+    const lastBrace = jsonText.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+      jsonText = jsonText.substring(firstBrace, lastBrace + 1);
+    }
+  }
+
   let parsed: any;
   try {
     parsed = JSON.parse(jsonText);

@@ -304,6 +304,22 @@ export async function voteForBot(
       break;
     }
 
+    // Check if client-side React hydrated and rendered cooldown message
+    const currentBodyText = await page.evaluate(() => (document.body ? document.body.innerText.toLowerCase() : '')).catch(() => '');
+    if (cooldownMarkers.some((marker) => currentBodyText.includes(marker))) {
+      console.log(`  ⏳ Already voted for bot ${botId} (cooldown active)`);
+      cleanupListener();
+      return {
+        accountName,
+        username,
+        avatarUrl,
+        botId,
+        status: 'ALREADY_VOTED',
+        message: 'Already voted on Top.gg, 12h cooldown active',
+        timestamp,
+      };
+    }
+
     const countdownInfo = await page.evaluate(() => {
       const buttons = Array.from(
         document.querySelectorAll('button, a[role="button"], [role="button"]')
@@ -314,7 +330,8 @@ export async function voteForBot(
 
       for (const b of buttons) {
         const text = (b.innerText || b.textContent || '').trim();
-        const digitMatch = text.match(/^\[?\(?(\d+)\s*s?\)?\]?$/);
+        // Require explicit 's' or 'vote' prefix so a random lone digit "1" is never treated as a countdown
+        const digitMatch = text.match(/^\[?\(?(\d+)\s*s\)?\]?$/i) || text.match(/^vote\s*\(?(\d+)\s*s?\)?$/i);
         if (digitMatch && parseInt(digitMatch[1], 10) > 0 && parseInt(digitMatch[1], 10) <= 60) {
           countdown = digitMatch[1];
           break;
@@ -454,7 +471,7 @@ export async function voteForBot(
   }
 
   console.log('  → Waiting for vote confirmation from Top.gg...');
-  const verifyDeadline = Date.now() + 25000;
+  let verifyDeadline = Date.now() + 25000;
   const clickTime = Date.now();
   let reclicked = false;
   const successMarkers = [
@@ -522,7 +539,24 @@ export async function voteForBot(
 
     if (await isCloudflareActive(page)) {
       console.log('  🛡️ Cloudflare verification appeared after vote click, attempting resolution...');
-      await resolveCloudflareChallenge(page, 20000);
+      const resolved = await resolveCloudflareChallenge(page, 20000);
+      if (resolved) {
+        verifyDeadline = Date.now() + 20000;
+        await sleep(1500);
+        const postChallengeBtn = await findVoteButton(page);
+        if (postChallengeBtn) {
+          console.log(`  👆 Submitting vote after Cloudflare verification ("${postChallengeBtn.text}")...`);
+          try {
+            if (typeof (page as any).realClick === 'function') {
+              await (page as any).realClick(postChallengeBtn.handle);
+            } else if (postChallengeBtn.box) {
+              await page.mouse.click(postChallengeBtn.box.x + postChallengeBtn.box.width / 2, postChallengeBtn.box.y + postChallengeBtn.box.height / 2);
+            } else {
+              await postChallengeBtn.handle.click();
+            }
+          } catch {}
+        }
+      }
     }
   }
 
@@ -554,6 +588,21 @@ export async function voteForBot(
       status: 'ALREADY_VOTED',
       message: 'Vote was accepted (cooldown now active)',
       timestamp,
+    };
+  }
+
+  if (bodyText.includes('something went wrong')) {
+    cleanupListener();
+    const errorScreenshot = await captureScreenshot(page, `topgg_err_${accountName}_${botId}`);
+    return {
+      accountName,
+      username,
+      avatarUrl,
+      botId,
+      status: 'FAILED',
+      message: 'Top.gg returned: Something went wrong while trying to vote, please try again later',
+      timestamp,
+      screenshotPath: errorScreenshot,
     };
   }
 
