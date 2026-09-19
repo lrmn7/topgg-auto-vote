@@ -1,6 +1,6 @@
 import * as dotenv from 'dotenv';
 import * as path from 'path';
-import { AppConfig } from './types';
+import { AppConfig, ProxyConfig } from './types';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
@@ -56,6 +56,28 @@ export function loadConfig(): AppConfig {
     process.env.CHROMIUM_PATH?.trim() ||
     undefined;
 
+  let proxy: ProxyConfig | undefined;
+  const rawProxyUrl = process.env.PROXY_URL || process.env.HTTPS_PROXY || process.env.HTTP_PROXY;
+  if (rawProxyUrl) {
+    try {
+      const parsed = new URL(rawProxyUrl);
+      proxy = {
+        host: parsed.hostname,
+        port: parseInt(parsed.port, 10) || 80,
+        username: parsed.username ? decodeURIComponent(parsed.username) : undefined,
+        password: parsed.password ? decodeURIComponent(parsed.password) : undefined,
+      };
+    } catch {}
+  } else if (process.env.PROXY_HOST) {
+    const port = parseInt(process.env.PROXY_PORT || '80', 10);
+    proxy = {
+      host: process.env.PROXY_HOST.trim(),
+      port: isNaN(port) ? 80 : port,
+      username: process.env.PROXY_USERNAME?.trim() || process.env.PROXY_USER?.trim() || undefined,
+      password: process.env.PROXY_PASSWORD?.trim() || process.env.PROXY_PASS?.trim() || undefined,
+    };
+  }
+
   return {
     botIds,
     discordWebhookUrl,
@@ -68,5 +90,6 @@ export function loadConfig(): AppConfig {
     botDelaySeconds,
     browserTimeoutSeconds,
     chromePath,
+    proxy,
   };
 }

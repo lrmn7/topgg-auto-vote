@@ -151,26 +151,59 @@ npm run start
 npm run start:prod
 ```
 
-### 2. VPS Deployment
+### 2. VPS Deployment (Ubuntu / Debian - Sangat Direkomendasikan)
 
-#### Option A: Process Manager (PM2)
+Menjalankan langsung di Linux VPS adalah opsi **paling stabil dan optimal** dibanding panel Docker:
+- Memiliki kontrol root penuh tanpa batasan cgroups/memory Docker.
+- Mendukung virtual display (`Xvfb`) penuh sehingga Cloudflare Turnstile lolos 100% seperti di GitHub Actions.
+- Berjalan 24/7 di background dengan **PM2** (otomatis restart jika server reboot).
 
+#### Langkah 1: Install Prasyarat Sistem & Browser
 ```bash
-# Install system prerequisites
-sudo apt-get update && sudo apt-get install -y xvfb google-chrome-stable
-npm install -g pm2
+sudo apt update && sudo apt upgrade -y
 
-# Install project dependencies and compile
+# Install Node.js 20.x & Git
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt install -y nodejs git
+
+# Install Xvfb, Chromium, dan font/grafik library
+sudo apt install -y xvfb chromium-browser fonts-liberation libnss3 libatk-bridge2.0-0 libgtk-3-0 libasound2 libgbm1 libxss1 xdg-utils
+
+# Install PM2 Process Manager
+sudo npm install -g pm2
+```
+
+#### Langkah 2: Clone & Build Project
+```bash
+git clone <URL_REPO_ANDA>
+cd auto-vote-topgg
 npm install
 npm run build
+```
 
-# Start daemon process
-pm2 start dist/index.js --name "topgg-voter"
+#### Langkah 3: Konfigurasi `.env` & Cookie
+```bash
+cp .env.example .env
+nano .env
+# Masukkan BOT_IDS, DISCORD_WEBHOOK_URL, PROXY_URL (jika pakai proxy)
+# Letakkan file cookie akun di folder cookies/ (misal: cookies/account1.json)
+```
 
-# Save process list for system reboot
+#### Langkah 4: Jalankan 24/7 dengan PM2
+```bash
+# Jalankan bot dengan display virtual Xvfb
+pm2 start npm --name "topgg-voter" -- run start:xvfb
+
+# Simpan agar otomatis hidup saat VPS reboot
 pm2 save
 pm2 startup
 ```
+
+#### Perintah Berguna PM2:
+- `pm2 logs topgg-voter` : Lihat log real-time
+- `pm2 restart topgg-voter` : Restart bot
+- `pm2 stop topgg-voter` : Hentikan bot
+- `pm2 status` : Cek status, CPU, dan memori
 
 #### Option B: Docker Compose
 

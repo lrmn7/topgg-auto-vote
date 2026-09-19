@@ -169,18 +169,31 @@ export async function createBrowserSession(config: AppConfig): Promise<BrowserSe
     );
   }
 
+  const hasDisplay = Boolean(process.env.DISPLAY);
   const disableXvfb =
     process.env.DISABLE_XVFB === '1' ||
     process.env.DISABLE_XVFB === 'true' ||
-    (isLinux && config.headless);
+    (isLinux && config.headless && !hasDisplay);
 
-  const headlessMode = config.headless ? 'new' : false;
+  // If a real X11 virtual display is active on Linux (e.g. via xvfb-run),
+  // running with headless: false gives the highest Turnstile pass rate
+  const headlessMode = hasDisplay
+    ? false
+    : (config.headless ? 'new' : false);
+
+  if (config.proxy) {
+    console.log(`  🌐 [Browser] Connecting via Proxy: ${config.proxy.host}:${config.proxy.port}`);
+  }
+  if (hasDisplay) {
+    console.log(`  🖥️ [Browser] Virtual Display active (${process.env.DISPLAY}), running in full GUI emulation mode`);
+  }
 
   const { browser, page } = await connect({
     headless: headlessMode as any,
     args,
     turnstile: true,
     disableXvfb,
+    ...(config.proxy ? { proxy: config.proxy } : {}),
     ...(chromeExecutable ? { customConfig: { chromePath: chromeExecutable } } : {}),
   });
 

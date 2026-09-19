@@ -39,6 +39,13 @@ export interface VoteResult {
   screenshotPath?: string;
 }
 
+export interface ProxyConfig {
+  host: string;
+  port: number;
+  username?: string;
+  password?: string;
+}
+
 export interface AppConfig {
   botIds: string[];
   discordWebhookUrl?: string;
@@ -51,4 +58,5 @@ export interface AppConfig {
   botDelaySeconds: number;
   browserTimeoutSeconds: number;
   chromePath?: string;
+  proxy?: ProxyConfig;
 }
