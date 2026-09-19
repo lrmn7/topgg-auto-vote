@@ -121,11 +121,11 @@ pause() {
 }
 
 # ------------------------------------------------------------------------------
-# Robust Multi-line JSON Paste Handler
+# Robust Multi-line JSON Paste Handler (Auto-detects completion on ']')
 # ------------------------------------------------------------------------------
 read_json_paste() {
     echo -e "${YELLOW}Please PASTE your cookie JSON content below.${NC}"
-    echo -e "${CYAN}Once pasted, type '${GREEN}END${CYAN}' on a new line and press [Enter]:${NC}"
+    echo -e "${CYAN}(Paste will auto-complete when the closing ']' is reached, or type '${GREEN}END${CYAN}' on a new line and press Enter):${NC}"
     echo -e "${PURPLE}--------------------------------------------------------------${NC}"
     local content=""
     local line=""
@@ -134,9 +134,33 @@ read_json_paste() {
             break
         fi
         content+="$line"$'\n'
+
+        # Auto-detect if JSON array or object is closed and valid
+        local trimmed="${line#"${line%%[![:space:]]*}"}"
+        trimmed="${trimmed%"${trimmed##*[![:space:]]}"}"
+        if [[ "$trimmed" == "]" || "$trimmed" == "}" ]]; then
+            local is_valid
+            is_valid=$(node -e "
+            try {
+                const val = JSON.parse(process.argv[1]);
+                if (typeof val === 'object' && val !== null) {
+                    console.log('VALID');
+                } else {
+                    console.log('INVALID');
+                }
+            } catch(e) {
+                console.log('INVALID');
+            }
+            " "$content" 2>/dev/null)
+            if [[ "$is_valid" == "VALID" ]]; then
+                echo -e "\n${GREEN}✓ JSON paste successfully detected and validated!${NC}"
+                echo "$content"
+                return 0
+            fi
+        fi
     done
 
-    # Validate JSON via Node.js
+    # Validate JSON via Node.js if ended via 'END'
     local is_valid
     is_valid=$(node -e "
     try {
@@ -161,7 +185,7 @@ read_json_paste() {
 }
 
 # ------------------------------------------------------------------------------
-# System Prerequisites Installer
+# System Prerequisites Installer (Compatible with Ubuntu 20.04/22.04/24.04 Noble & Debian)
 # ------------------------------------------------------------------------------
 install_system_prerequisites() {
     echo -e "\n${BLUE}🔍 Checking Linux system dependencies (Node.js, Xvfb, Chromium)...${NC}"
@@ -188,7 +212,14 @@ install_system_prerequisites() {
             curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
             sudo apt install -y nodejs
         fi
-        sudo apt install -y git xvfb chromium-browser fonts-liberation libnss3 libatk-bridge2.0-0 libgtk-3-0 libasound2 libgbm1 libxss1 xdg-utils
+
+        # Core libraries + Xvfb
+        sudo apt install -y git xvfb fonts-liberation libnss3 libgbm1 libxss1 xdg-utils
+        # Handle Ubuntu 24.04 (Noble) t64 package transitions
+        sudo apt install -y libasound2t64 2>/dev/null || sudo apt install -y libasound2 2>/dev/null || true
+        sudo apt install -y libatk-bridge2.0-0t64 2>/dev/null || sudo apt install -y libatk-bridge2.0-0 2>/dev/null || true
+        sudo apt install -y libgtk-3-0t64 2>/dev/null || sudo apt install -y libgtk-3-0 2>/dev/null || true
+        sudo apt install -y chromium-browser 2>/dev/null || sudo apt install -y chromium 2>/dev/null || true
     else
         echo -e "${GREEN}✅ All core system dependencies (Node.js, Git, Xvfb) are ready.${NC}"
     fi
