@@ -402,7 +402,7 @@ EOF
     echo ""
     echo "Starting bot with PM2 (Virtual Display Xvfb)..."
     pm2 delete "$PM2_APP_NAME" >/dev/null 2>&1
-    pm2 start npm --name "$PM2_APP_NAME" -- run start:xvfb
+    pm2 start npm --name "$PM2_APP_NAME" --cwd "$SCRIPT_DIR" -- run start:xvfb
     pm2 save >/dev/null 2>&1
 
     echo ""
@@ -713,7 +713,7 @@ menu_start_bot() {
 
     echo "Starting bot with PM2 (Virtual Display Xvfb)..."
     pm2 delete "$PM2_APP_NAME" >/dev/null 2>&1
-    pm2 start npm --name "$PM2_APP_NAME" -- run start:xvfb
+    pm2 start npm --name "$PM2_APP_NAME" --cwd "$SCRIPT_DIR" -- run start:xvfb
     pm2 save >/dev/null 2>&1
 
     echo ""

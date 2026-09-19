@@ -1,8 +1,15 @@
 import * as dotenv from 'dotenv';
 import * as path from 'path';
+import * as fs from 'fs';
 import { AppConfig, ProxyConfig } from './types';
 
-dotenv.config({ path: path.resolve(process.cwd(), '.env') });
+// Dynamically resolve project root using __dirname (works anywhere: /home, /root, /opt, Windows, etc.)
+const projectRoot = path.resolve(__dirname, '..');
+const envPath = fs.existsSync(path.resolve(process.cwd(), '.env'))
+  ? path.resolve(process.cwd(), '.env')
+  : path.resolve(projectRoot, '.env');
+
+dotenv.config({ path: envPath });
 
 function parseBool(val: string | undefined, defaultVal: boolean): boolean {
   if (val === undefined || val === '') return defaultVal;

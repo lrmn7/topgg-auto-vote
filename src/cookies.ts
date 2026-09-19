@@ -184,7 +184,21 @@ function parseCookiesFromEnvValue(envVal: string, defaultName: string): AccountC
  * Loads all account cookies from the cookies directory or env fallback
  */
 export function loadAllAccountCookies(cookiesDirPath?: string): AccountCookieData[] {
-  const dir = cookiesDirPath || path.resolve(process.cwd(), 'cookies');
+  let dir = cookiesDirPath;
+  if (!dir) {
+    const projectRoot = path.resolve(__dirname, '..');
+    const projectDir = path.resolve(projectRoot, 'cookies');
+    const localDir = path.resolve(process.cwd(), 'cookies');
+
+    if (fs.existsSync(projectDir) && fs.readdirSync(projectDir).some((f) => f.endsWith('.json'))) {
+      dir = projectDir;
+    } else if (fs.existsSync(localDir) && fs.readdirSync(localDir).some((f) => f.endsWith('.json'))) {
+      dir = localDir;
+    } else {
+      dir = fs.existsSync(projectDir) ? projectDir : localDir;
+    }
+  }
+
   const accounts: AccountCookieData[] = [];
 
   if (fs.existsSync(dir)) {

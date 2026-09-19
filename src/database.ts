@@ -10,7 +10,18 @@ export class VoteDatabase {
   private data: DatabaseSchema;
 
   constructor(dbPath?: string) {
-    this.filePath = dbPath || path.resolve(process.cwd(), 'data', 'database.json');
+    if (dbPath) {
+      this.filePath = dbPath;
+    } else {
+      const projectRoot = path.resolve(__dirname, '..');
+      const localData = path.resolve(process.cwd(), 'data', 'database.json');
+      const projectData = path.resolve(projectRoot, 'data', 'database.json');
+      this.filePath = fs.existsSync(localData) ? localData : projectData;
+    }
+    const parentDir = path.dirname(this.filePath);
+    if (!fs.existsSync(parentDir)) {
+      fs.mkdirSync(parentDir, { recursive: true });
+    }
     this.data = this.load();
     this.ensureInitialized();
   }
