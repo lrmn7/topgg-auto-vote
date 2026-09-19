@@ -47,6 +47,18 @@ is_bot_online() {
     [[ "$s" == "ONLINE" ]]
 }
 
+launch_pm2_process() {
+    pm2 delete "$PM2_APP_NAME" >/dev/null 2>&1
+    if command -v xvfb-run >/dev/null 2>&1; then
+        echo "Starting bot with PM2 (Virtual Display Xvfb mode)..."
+        pm2 start npm --name "$PM2_APP_NAME" --cwd "$SCRIPT_DIR" -- run start:xvfb
+    else
+        echo -e "${YELLOW}⚠️ Notice: xvfb-run not detected. Starting bot in direct headless mode...${NC}"
+        pm2 start npm --name "$PM2_APP_NAME" --cwd "$SCRIPT_DIR" -- start
+    fi
+    pm2 save >/dev/null 2>&1
+}
+
 count_cookie_accounts() {
     find "$COOKIE_DIR" -maxdepth 1 -name "*.json" 2>/dev/null | wc -l
 }
@@ -181,50 +193,111 @@ read_json_paste() {
 }
 
 # ------------------------------------------------------------------------------
-# System Prerequisites Installer (Compatible with Ubuntu 20.04/22.04/24.04 Noble & Debian)
+# System Prerequisites Installer (Multi-Distro, Root & Non-Root Adaptive)
 # ------------------------------------------------------------------------------
 install_system_prerequisites() {
     echo ""
-    echo "Checking Linux system dependencies (Node.js, Xvfb, Chromium)..."
-    local need_apt=0
-    
+    echo "Checking system dependencies (Node.js, Git, Xvfb, Chrome)..."
+
+    # Setup sudo prefix if running as non-root
+    local SUDO=""
+    if [[ "$EUID" -ne 0 ]]; then
+        if command -v sudo >/dev/null 2>&1; then
+            SUDO="sudo"
+        else
+            echo -e "${YELLOW}⚠️ Notice: Not running as root and 'sudo' is not installed.${NC}"
+        fi
+    fi
+
+    # Check Node.js and verify version (Node >= 18 is required)
+    local need_node=0
     if ! command -v node >/dev/null 2>&1; then
         echo -e "${YELLOW}⚠️ Node.js is not installed.${NC}"
-        need_apt=1
-    fi
-    if ! command -v git >/dev/null 2>&1; then
-        echo -e "${YELLOW}⚠️ Git is not installed.${NC}"
-        need_apt=1
-    fi
-    if ! command -v xvfb-run >/dev/null 2>&1; then
-        echo -e "${YELLOW}⚠️ Xvfb (Virtual Display) is not installed.${NC}"
-        need_apt=1
+        need_node=1
+    else
+        local node_major
+        node_major=$(node -v 2>/dev/null | sed -E 's/^v//' | cut -d'.' -f1)
+        if [[ -n "$node_major" && "$node_major" -lt 18 ]]; then
+            echo -e "${YELLOW}⚠️ Node.js version (v$node_major) is too old (requires Node 18+).${NC}"
+            need_node=1
+        fi
     fi
 
-    if [[ $need_apt -eq 1 ]]; then
-        echo ""
-        echo "Installing system dependencies automatically (requires sudo)..."
-        sudo apt update -y
-        if ! command -v node >/dev/null 2>&1; then
-            echo "Installing Node.js 20..."
-            curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-            sudo apt install -y nodejs
+    # Detect package manager
+    local pkg_manager=""
+    if command -v apt-get >/dev/null 2>&1; then
+        pkg_manager="apt"
+    elif command -v dnf >/dev/null 2>&1; then
+        pkg_manager="dnf"
+    elif command -v yum >/dev/null 2>&1; then
+        pkg_manager="yum"
+    elif command -v pacman >/dev/null 2>&1; then
+        pkg_manager="pacman"
+    fi
+
+    if [[ -n "$pkg_manager" ]]; then
+        if [[ $need_node -eq 1 ]]; then
+            echo "Installing / Updating Node.js 20..."
+            if [[ "$pkg_manager" == "apt" ]]; then
+                curl -fsSL https://deb.nodesource.com/setup_20.x | $SUDO -E bash - 2>/dev/null
+                $SUDO apt-get install -y nodejs
+            elif [[ "$pkg_manager" == "dnf" || "$pkg_manager" == "yum" ]]; then
+                curl -fsSL https://rpm.nodesource.com/setup_20.x | $SUDO bash - 2>/dev/null
+                $SUDO $pkg_manager install -y nodejs
+            fi
         fi
 
-        # Core libraries + Xvfb
-        sudo apt install -y git xvfb fonts-liberation libnss3 libgbm1 libxss1 xdg-utils
-        # Handle Ubuntu 24.04 (Noble) t64 package transitions
-        sudo apt install -y libasound2t64 2>/dev/null || sudo apt install -y libasound2 2>/dev/null || true
-        sudo apt install -y libatk-bridge2.0-0t64 2>/dev/null || sudo apt install -y libatk-bridge2.0-0 2>/dev/null || true
-        sudo apt install -y libgtk-3-0t64 2>/dev/null || sudo apt install -y libgtk-3-0 2>/dev/null || true
-        sudo apt install -y chromium-browser 2>/dev/null || sudo apt install -y chromium 2>/dev/null || true
+        # Check Git
+        if ! command -v git >/dev/null 2>&1; then
+            echo "Installing Git..."
+            if [[ "$pkg_manager" == "apt" ]]; then
+                $SUDO apt-get install -y git
+            elif [[ "$pkg_manager" == "dnf" || "$pkg_manager" == "yum" ]]; then
+                $SUDO $pkg_manager install -y git
+            fi
+        fi
+
+        # Check Xvfb (Virtual Framebuffer)
+        if ! command -v xvfb-run >/dev/null 2>&1; then
+            echo "Installing Xvfb (Virtual Display)..."
+            if [[ "$pkg_manager" == "apt" ]]; then
+                $SUDO apt-get update -y 2>/dev/null || true
+                $SUDO apt-get install -y xvfb
+            elif [[ "$pkg_manager" == "dnf" || "$pkg_manager" == "yum" ]]; then
+                $SUDO $pkg_manager install -y xorg-x11-server-Xvfb
+            fi
+        fi
+
+        # Check Chrome / Chromium and required system graphics libraries
+        if ! command -v google-chrome >/dev/null 2>&1 && ! command -v google-chrome-stable >/dev/null 2>&1 && ! command -v chromium >/dev/null 2>&1 && ! command -v chromium-browser >/dev/null 2>&1; then
+            echo "Installing Google Chrome / Chromium & required graphic libraries..."
+            if [[ "$pkg_manager" == "apt" ]]; then
+                local arch
+                arch=$(uname -m 2>/dev/null || echo "x86_64")
+                if [[ "$arch" == "x86_64" || "$arch" == "amd64" ]]; then
+                    curl -fsSL https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb -o /tmp/google-chrome-stable.deb 2>/dev/null
+                    $SUDO apt-get install -y /tmp/google-chrome-stable.deb 2>/dev/null || true
+                    rm -f /tmp/google-chrome-stable.deb
+                fi
+                $SUDO apt-get install -y fonts-liberation libnss3 libgbm1 libxss1 xdg-utils 2>/dev/null || true
+                $SUDO apt-get install -y libasound2t64 2>/dev/null || $SUDO apt-get install -y libasound2 2>/dev/null || true
+                $SUDO apt-get install -y libatk-bridge2.0-0t64 2>/dev/null || $SUDO apt-get install -y libatk-bridge2.0-0 2>/dev/null || true
+                $SUDO apt-get install -y libgtk-3-0t64 2>/dev/null || $SUDO apt-get install -y libgtk-3-0 2>/dev/null || true
+            elif [[ "$pkg_manager" == "dnf" || "$pkg_manager" == "yum" ]]; then
+                $SUDO $pkg_manager install -y chromium alsa-lib atk gtk3 nss libXScrnSaver 2>/dev/null || true
+            fi
+        fi
     else
-        echo "✓ All core system dependencies (Node.js, Git, Xvfb) are ready."
+        echo -e "${YELLOW}⚠️ Unsupported package manager. Please ensure Node.js (>=18), Git, and Xvfb are installed manually.${NC}"
     fi
 
+    # Check PM2
     if ! command -v pm2 >/dev/null 2>&1; then
         echo "Installing PM2 Process Manager globally..."
-        sudo npm install -g pm2
+        $SUDO npm install -g pm2 2>/dev/null || npm install -g pm2 2>/dev/null || true
+        if ! command -v pm2 >/dev/null 2>&1; then
+            echo -e "${YELLOW}⚠️ Warning: Global PM2 install failed. Local npx pm2 will be used if needed.${NC}"
+        fi
     fi
 }
 
@@ -400,10 +473,7 @@ EOF
 
     # 6. Launch with PM2
     echo ""
-    echo "Starting bot with PM2 (Virtual Display Xvfb)..."
-    pm2 delete "$PM2_APP_NAME" >/dev/null 2>&1
-    pm2 start npm --name "$PM2_APP_NAME" --cwd "$SCRIPT_DIR" -- run start:xvfb
-    pm2 save >/dev/null 2>&1
+    launch_pm2_process
 
     echo ""
     echo "=============================================================="
@@ -711,10 +781,7 @@ menu_start_bot() {
         fi
     fi
 
-    echo "Starting bot with PM2 (Virtual Display Xvfb)..."
-    pm2 delete "$PM2_APP_NAME" >/dev/null 2>&1
-    pm2 start npm --name "$PM2_APP_NAME" --cwd "$SCRIPT_DIR" -- run start:xvfb
-    pm2 save >/dev/null 2>&1
+    launch_pm2_process
 
     echo ""
     echo "✓ Bot '$PM2_APP_NAME' successfully started in the background!"
@@ -757,10 +824,7 @@ menu_restart_bot() {
     echo "Compiling TypeScript (npm run build)..."
     npm run build
 
-    echo "Restarting bot '$PM2_APP_NAME' with project directory ($SCRIPT_DIR)..."
-    pm2 delete "$PM2_APP_NAME" >/dev/null 2>&1
-    pm2 start npm --name "$PM2_APP_NAME" --cwd "$SCRIPT_DIR" -- run start:xvfb
-    pm2 save >/dev/null 2>&1
+    launch_pm2_process
     echo ""
     echo "✓ Bot successfully restarted."
     echo ""

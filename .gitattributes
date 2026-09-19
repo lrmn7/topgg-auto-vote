@@ -1,0 +1,10 @@
+# Auto-detect text files and perform LF normalization on checkout
+* text=auto eol=lf
+
+# Explicitly declare shell scripts to always have LF line endings
+*.sh text eol=lf
+
+# Explicitly declare JSON and source files to always have LF line endings
+*.json text eol=lf
+*.ts text eol=lf
+*.md text eol=lf
