@@ -114,7 +114,6 @@ function parseCookiesFromEnvValue(envVal: string, defaultName: string): AccountC
     } catch {}
   }
 
-  // Extract JSON payload if surrounded by any terminal text or prompts
   const firstBracket = jsonText.indexOf('[');
   const lastBracket = jsonText.lastIndexOf(']');
   if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {

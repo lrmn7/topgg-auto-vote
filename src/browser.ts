@@ -175,8 +175,6 @@ export async function createBrowserSession(config: AppConfig): Promise<BrowserSe
     process.env.DISABLE_XVFB === 'true' ||
     (isLinux && config.headless && !hasDisplay);
 
-  // If a real X11 virtual display is active on Linux (e.g. via xvfb-run),
-  // running with headless: false gives the highest Turnstile pass rate
   const headlessMode = hasDisplay
     ? false
     : (config.headless ? 'new' : false);
