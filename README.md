@@ -151,14 +151,39 @@ npm run start
 npm run start:prod
 ```
 
-### 2. VPS Deployment (Ubuntu / Debian - Sangat Direkomendasikan)
+### 2. VPS Deployment (Ubuntu / Debian - Recommended)
 
-Menjalankan langsung di Linux VPS adalah opsi **paling stabil dan optimal** dibanding panel Docker:
-- Memiliki kontrol root penuh tanpa batasan cgroups/memory Docker.
-- Mendukung virtual display (`Xvfb`) penuh sehingga Cloudflare Turnstile lolos 100% seperti di GitHub Actions.
-- Berjalan 24/7 di background dengan **PM2** (otomatis restart jika server reboot).
+Running directly on a Linux VPS is the **most stable and optimal** deployment option:
+- Full system root control without container cgroup or memory limits.
+- Dedicated virtual display (`Xvfb`) support ensuring maximum Cloudflare Turnstile bypass reliability.
+- Continuous 24/7 background execution with **PM2** (automatically restarts on server reboots).
 
-#### Langkah 1: Install Prasyarat Sistem & Browser
+#### Option A: All-in-One Interactive CLI Manager (`run.sh`) - Recommended
+
+The project includes an interactive terminal manager script (`run.sh`) that automates environment setup, cookie management, configuration, PM2 control, and updates:
+
+```bash
+# Make executable and launch the manager
+chmod +x run.sh
+./run.sh
+```
+
+**Features provided by `run.sh`:**
+- `[1] Setup & Launch Project`: Automatically installs system dependencies (Node 20, Git, Xvfb, Chrome/Chromium, PM2), compiles TypeScript, guides cookie and `.env` setup, and starts PM2.
+- `[2] Manage Cookie Accounts`: Add, view (with decoded Discord username), edit, or delete account cookies.
+- `[3] Edit Configuration (.env)`: Interactive questionnaire or direct editor for bot IDs, webhook, delays, and proxy.
+- `[4] Start Bot`: Starts the bot in PM2 with duplicate-instance protection.
+- `[5] Stop Bot` / `[6] Restart Bot`: Cleanly controls the PM2 background process.
+- `[7] View Real-Time Logs`: Streams live PM2 logs (press `Ctrl+C` to return to the menu).
+- `[8] Check System & Bot Status`: Displays PM2 process details, cooldown database records, RAM, and disk usage.
+- `[9] Update Project from GitHub`: One-click `git pull`, dependency update, and rebuild with auto-restart.
+- `[10] Remove Bot from PM2`: Removes the bot process from PM2 while preserving cookies and configuration.
+
+#### Option B: Manual Setup via PM2
+
+If you prefer setting up manually without the interactive menu:
+
+**Step 1: Install System Prerequisites & Browser**
 ```bash
 sudo apt update && sudo apt upgrade -y
 
@@ -166,46 +191,49 @@ sudo apt update && sudo apt upgrade -y
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
 sudo apt install -y nodejs git
 
-# Install Xvfb, Chromium, dan font/grafik library
-sudo apt install -y xvfb chromium-browser fonts-liberation libnss3 libatk-bridge2.0-0 libgtk-3-0 libasound2 libgbm1 libxss1 xdg-utils
+# Install Xvfb, fonts, and required graphic libraries
+sudo apt install -y xvfb fonts-liberation libnss3 libgbm1 libxss1 xdg-utils
+# On Ubuntu / Debian, installing the official Google Chrome package resolves all libraries automatically:
+wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb -O /tmp/chrome.deb
+sudo apt install -y /tmp/chrome.deb && rm -f /tmp/chrome.deb
 
-# Install PM2 Process Manager
+# Install PM2 Process Manager globally
 sudo npm install -g pm2
 ```
 
-#### Langkah 2: Clone & Build Project
+**Step 2: Clone & Build Project**
 ```bash
-git clone <URL_REPO_ANDA>
-cd auto-vote-topgg
+git clone https://github.com/lrmn7/topgg-auto-vote.git
+cd topgg-auto-vote
 npm install
 npm run build
 ```
 
-#### Langkah 3: Konfigurasi `.env` & Cookie
+**Step 3: Configure `.env` & Cookie Accounts**
 ```bash
 cp .env.example .env
 nano .env
-# Masukkan BOT_IDS, DISCORD_WEBHOOK_URL, PROXY_URL (jika pakai proxy)
-# Letakkan file cookie akun di folder cookies/ (misal: cookies/account1.json)
+# Enter BOT_IDS, DISCORD_WEBHOOK_URL, and optional proxy settings
+# Place your exported cookie JSON files into the cookies/ directory (e.g. cookies/account1.json)
 ```
 
-#### Langkah 4: Jalankan 24/7 dengan PM2
+**Step 4: Launch 24/7 with PM2**
 ```bash
-# Jalankan bot dengan display virtual Xvfb
-pm2 start npm --name "topgg-voter" -- run start:xvfb
+# Launch bot with virtual display Xvfb mode
+pm2 start npm --name "topgg-vote" -- run start:xvfb
 
-# Simpan agar otomatis hidup saat VPS reboot
+# Save process list so the bot starts automatically on server reboot
 pm2 save
 pm2 startup
 ```
 
-#### Perintah Berguna PM2:
-- `pm2 logs topgg-voter` : Lihat log real-time
-- `pm2 restart topgg-voter` : Restart bot
-- `pm2 stop topgg-voter` : Hentikan bot
-- `pm2 status` : Cek status, CPU, dan memori
+**Helpful PM2 Commands:**
+- `pm2 logs topgg-vote` : View real-time output logs
+- `pm2 restart topgg-vote` : Restart the bot
+- `pm2 stop topgg-vote` : Stop the bot
+- `pm2 status` : Check status, CPU, and memory usage
 
-#### Option B: Docker Compose
+### 3. Docker Compose
 
 ```bash
 # Start container in detached mode
@@ -215,7 +243,7 @@ docker compose up -d --build
 docker compose logs -f
 ```
 
-### 3. Pterodactyl Panel
+### 4. Pterodactyl Panel
 
 Running headless browser automation inside Pterodactyl requires a container image that contains Chromium and its necessary graphics libraries.
 
@@ -245,7 +273,7 @@ Running headless browser automation inside Pterodactyl requires a container imag
 4. **Run the Bot**:
    - Start the server from the Console tab. The bot automatically compiles TypeScript and launches the continuous voting cycle.
 
-### 4. GitHub Actions (Automated Cloud Scheduling)
+### 5. GitHub Actions (Automated Cloud Scheduling)
 
 The repository includes a GitHub Actions workflow located at `.github/workflows/vote.yml`.
 
@@ -255,8 +283,8 @@ The repository includes a GitHub Actions workflow located at `.github/workflows/
    - `DISCORD_WEBHOOK_URL`: Your Discord webhook endpoint.
    - `TOPGG_COOKIES`: Raw JSON string of your account cookies.
 3. The workflow runs on a cron schedule twice per day (every 12 hours):
-   - 00:00 UTC (07:00 WIB)
-   - 12:00 UTC (19:00 WIB)
+   - 00:00 UTC (07:00 UTC+7 / WIB)
+   - 12:00 UTC (19:00 UTC+7 / WIB)
 4. To trigger a run manually, navigate to the `Actions` tab, select `Top.gg Auto-Vote`, and click `Run workflow`.
 
 ---
